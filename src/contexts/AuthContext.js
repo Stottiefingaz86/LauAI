@@ -16,6 +16,15 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState(null)
   const [userRole, setUserRole] = useState(null)
+  const [billingInfo, setBillingInfo] = useState({
+    plan: 'basic',
+    seats: 1,
+    usedSeats: 0,
+    totalSeats: 1,
+    monthlyCost: 20,
+    nextBillingDate: null,
+    inviteLink: null
+  })
 
   useEffect(() => {
     // Get initial session
@@ -29,6 +38,11 @@ export const AuthProvider = ({ children }) => {
         if (session?.user) {
           const role = session.user.user_metadata?.role || 'member'
           setUserRole(role)
+          
+          // Load billing info for admins
+          if (role === 'admin') {
+            await loadBillingInfo(session.user.id)
+          }
         }
       } catch (error) {
         console.error('Error getting initial session:', error)
@@ -49,8 +63,22 @@ export const AuthProvider = ({ children }) => {
         if (session?.user) {
           const role = session.user.user_metadata?.role || 'member'
           setUserRole(role)
+          
+          // Load billing info for admins
+          if (role === 'admin') {
+            await loadBillingInfo(session.user.id)
+          }
         } else {
           setUserRole(null)
+          setBillingInfo({
+            plan: 'basic',
+            seats: 1,
+            usedSeats: 0,
+            totalSeats: 1,
+            monthlyCost: 20,
+            nextBillingDate: null,
+            inviteLink: null
+          })
         }
         
         setLoading(false)
@@ -59,6 +87,25 @@ export const AuthProvider = ({ children }) => {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  const loadBillingInfo = async (userId) => {
+    try {
+      // This would typically fetch from your billing service
+      // For now, we'll simulate the billing data
+      const billingData = {
+        plan: 'basic',
+        seats: 1,
+        usedSeats: 1, // Current admin
+        totalSeats: 1,
+        monthlyCost: 20,
+        nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+        inviteLink: `${window.location.origin}/invite/${userId}`
+      }
+      setBillingInfo(billingData)
+    } catch (error) {
+      console.error('Error loading billing info:', error)
+    }
+  }
 
   const signUp = async (email, password, firstName, lastName, role = 'member') => {
     try {
@@ -90,8 +137,53 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const inviteUser = async (email, role = 'member') => {
+    try {
+      // Check if we have available seats
+      if (billingInfo.usedSeats >= billingInfo.totalSeats) {
+        throw new Error('No available seats. Please upgrade your plan.')
+      }
+
+      // Generate invitation
+      const { data, error } = await authService.inviteUser(email, role, user.id)
+      if (error) throw error
+
+      // Update billing info
+      setBillingInfo(prev => ({
+        ...prev,
+        usedSeats: prev.usedSeats + 1
+      }))
+
+      return { data, error: null }
+    } catch (error) {
+      return { data: null, error }
+    }
+  }
+
+  const upgradePlan = async (additionalSeats) => {
+    try {
+      const newTotalSeats = billingInfo.totalSeats + additionalSeats
+      const additionalCost = additionalSeats * 9.99
+      const newMonthlyCost = 20 + additionalCost
+
+      // This would typically update your billing service
+      const updatedBilling = {
+        ...billingInfo,
+        totalSeats: newTotalSeats,
+        monthlyCost: newMonthlyCost
+      }
+
+      setBillingInfo(updatedBilling)
+      return { data: updatedBilling, error: null }
+    } catch (error) {
+      return { data: null, error }
+    }
+  }
+
   const isAdmin = userRole === 'admin'
   const isMember = userRole === 'member'
+  const isManager = userRole === 'manager'
+  const isLeader = userRole === 'leader'
 
   const value = {
     user,
@@ -100,9 +192,14 @@ export const AuthProvider = ({ children }) => {
     userRole,
     isAdmin,
     isMember,
+    isManager,
+    isLeader,
+    billingInfo,
     signUp,
     signIn,
     signOut,
+    inviteUser,
+    upgradePlan,
     isAuthenticated: !!user
   }
 

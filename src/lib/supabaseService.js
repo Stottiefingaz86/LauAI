@@ -2,7 +2,11 @@ import { supabase } from './supabase'
 
 // Authentication
 export const authService = {
-  async signUp(email, password, firstName, lastName) {
+  async getSession() {
+    return await supabase.auth.getSession()
+  },
+
+  async signUp(email, password, firstName, lastName, role = 'member') {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -10,6 +14,7 @@ export const authService = {
         data: {
           first_name: firstName,
           last_name: lastName,
+          role: role
         }
       }
     })
@@ -25,22 +30,105 @@ export const authService = {
   },
 
   async signOut() {
-    const { error } = await supabase.auth.signOut()
-    return { error }
-  },
-
-  async getCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser()
-    return user
-  },
-
-  async getSession() {
-    const { data: { session } } = await supabase.auth.getSession()
-    return { session }
+    return await supabase.auth.signOut()
   },
 
   onAuthStateChange(callback) {
     return supabase.auth.onAuthStateChange(callback)
+  },
+
+  async inviteUser(email, role, invitedBy) {
+    // This would typically create an invitation record in your database
+    // For now, we'll simulate the invitation process
+    const inviteData = {
+      email,
+      role,
+      invited_by: invitedBy,
+      status: 'pending',
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      created_at: new Date().toISOString()
+    }
+
+    // In a real implementation, you would:
+    // 1. Create an invitation record in your database
+    // 2. Send an email with the invitation link
+    // 3. Track invitation status
+
+    return { data: inviteData, error: null }
+  }
+}
+
+// Billing and Subscription
+export const billingService = {
+  async getBillingInfo(userId) {
+    // This would typically fetch from your billing service (Stripe, etc.)
+    const { data, error } = await supabase
+      .from('billing_info')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      return { data: null, error }
+    }
+
+    // Return default billing info if none exists
+    return {
+      data: data || {
+        plan: 'basic',
+        seats: 1,
+        used_seats: 1,
+        total_seats: 1,
+        monthly_cost: 20,
+        next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        invite_link: `${window.location.origin}/invite/${userId}`
+      },
+      error: null
+    }
+  },
+
+  async updateBillingInfo(userId, updates) {
+    const { data, error } = await supabase
+      .from('billing_info')
+      .upsert({
+        user_id: userId,
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    return { data, error }
+  },
+
+  async getInvitations(userId) {
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('invited_by', userId)
+      .order('created_at', { ascending: false })
+
+    return { data, error }
+  },
+
+  async createInvitation(invitationData) {
+    const { data, error } = await supabase
+      .from('invitations')
+      .insert(invitationData)
+      .select()
+      .single()
+
+    return { data, error }
+  },
+
+  async getInvitation(inviteId) {
+    const { data, error } = await supabase
+      .from('invitations')
+      .select('*')
+      .eq('id', inviteId)
+      .single()
+
+    return { data, error }
   }
 }
 
@@ -51,6 +139,7 @@ export const teamService = {
       .from('teams')
       .select('*')
       .order('created_at', { ascending: false })
+
     return { data, error }
   },
 
@@ -60,6 +149,7 @@ export const teamService = {
       .insert(teamData)
       .select()
       .single()
+
     return { data, error }
   },
 
@@ -70,6 +160,7 @@ export const teamService = {
       .eq('id', teamId)
       .select()
       .single()
+
     return { data, error }
   },
 
@@ -78,28 +169,7 @@ export const teamService = {
       .from('teams')
       .delete()
       .eq('id', teamId)
-    return { error }
-  },
 
-  async addMemberToTeam(teamId, userId, role = 'member') {
-    const { data, error } = await supabase
-      .from('team_members')
-      .insert({
-        team_id: teamId,
-        user_id: userId,
-        role
-      })
-      .select()
-      .single()
-    return { data, error }
-  },
-
-  async removeMemberFromTeam(teamId, userId) {
-    const { error } = await supabase
-      .from('team_members')
-      .delete()
-      .eq('team_id', teamId)
-      .eq('user_id', userId)
     return { error }
   }
 }
@@ -129,19 +199,19 @@ export const memberService = {
         teams:team_id(name),
         signals:signals(value, created_at, signal_type, notes),
         meetings:meetings(
-          id, 
-          title, 
-          description, 
-          created_at, 
-          recording_url, 
-          analyzed_at, 
+          id,
+          title,
+          description,
+          created_at,
+          recording_url,
+          analyzed_at,
           analysis_data,
           duration,
           file_size
         ),
         surveys:survey_responses(
-          survey_id, 
-          response_data, 
+          survey_id,
+          response_data,
           submitted_at,
           surveys:survey_id(title, description, status)
         ),
@@ -177,7 +247,7 @@ export const memberService = {
   processSurveyData(surveyResponses) {
     // Group survey responses by survey_id and add computed fields
     const surveyGroups = {};
-    
+
     surveyResponses.forEach(response => {
       const surveyId = response.survey_id;
       if (!surveyGroups[surveyId]) {
@@ -193,7 +263,7 @@ export const memberService = {
           response_count: 0
         };
       }
-      
+
       surveyGroups[surveyId].responses.push({
         question: `Question ${surveyGroups[surveyId].responses.length + 1}`,
         answer: response.response_data
@@ -204,7 +274,7 @@ export const memberService = {
     Object.values(surveyGroups).forEach(survey => {
       survey.questions_count = survey.responses.length;
       survey.response_count = survey.responses.length;
-      
+
       // Calculate satisfaction score from responses
       const scores = survey.responses
         .map(r => {
@@ -213,8 +283,8 @@ export const memberService = {
           return null;
         })
         .filter(score => score !== null);
-      
-      survey.satisfaction_score = scores.length > 0 
+
+      survey.satisfaction_score = scores.length > 0
         ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
         : 'N/A';
     });
@@ -251,7 +321,7 @@ export const memberService = {
 
     return { error };
   }
-};
+}
 
 // Surveys
 export const surveyService = {
@@ -260,51 +330,20 @@ export const surveyService = {
       .from('surveys')
       .select('*')
       .order('created_at', { ascending: false })
+
     return { data, error }
   },
 
-  async createSurvey(surveyData) {
+  async getSurveyById(surveyId) {
     const { data, error } = await supabase
       .from('surveys')
-      .insert(surveyData)
-      .select()
-      .single()
-    return { data, error }
-  },
-
-  async updateSurvey(surveyId, updates) {
-    const { data, error } = await supabase
-      .from('surveys')
-      .update(updates)
+      .select(`
+        *,
+        questions:survey_questions(*)
+      `)
       .eq('id', surveyId)
-      .select()
       .single()
-    return { data, error }
-  },
 
-  async deleteSurvey(surveyId) {
-    const { error } = await supabase
-      .from('surveys')
-      .delete()
-      .eq('id', surveyId)
-    return { error }
-  },
-
-  async getSurveyQuestions(surveyId) {
-    const { data, error } = await supabase
-      .from('survey_questions')
-      .select('*')
-      .eq('survey_id', surveyId)
-      .order('order_index', { ascending: true })
-    return { data, error }
-  },
-
-  async addSurveyQuestion(questionData) {
-    const { data, error } = await supabase
-      .from('survey_questions')
-      .insert(questionData)
-      .select()
-      .single()
     return { data, error }
   },
 
@@ -314,213 +353,73 @@ export const surveyService = {
       .insert(responseData)
       .select()
       .single()
-    return { data, error }
-  },
 
-  async getSurveyResponses(surveyId) {
-    const { data, error } = await supabase
-      .from('survey_responses')
-      .select(`
-        *,
-        users (
-          id,
-          first_name,
-          last_name,
-          email
-        )
-      `)
-      .eq('survey_id', surveyId)
     return { data, error }
   }
 }
 
 // Signals
 export const signalService = {
-  async getUserSignals(userId) {
+  async getSignals() {
     const { data, error } = await supabase
       .from('signals')
-      .select('*')
-      .eq('user_id', userId)
+      .select(`
+        *,
+        team_members:team_member_id(name, email, role, department)
+      `)
       .order('created_at', { ascending: false })
+
     return { data, error }
   },
 
-  async addSignal(signalData) {
+  async createSignal(signalData) {
     const { data, error } = await supabase
       .from('signals')
       .insert(signalData)
       .select()
       .single()
-    return { data, error }
-  },
 
-  async updateSignal(signalId, updates) {
-    const { data, error } = await supabase
-      .from('signals')
-      .update(updates)
-      .eq('id', signalId)
-      .select()
-      .single()
     return { data, error }
   }
 }
 
-// AI Insights
+// Insights
 export const insightService = {
-  async getUserInsights(userId) {
+  async getInsights() {
     const { data, error } = await supabase
       .from('ai_insights')
-      .select('*')
-      .eq('user_id', userId)
+      .select(`
+        *,
+        team_members:team_member_id(name, email)
+      `)
       .order('created_at', { ascending: false })
+
     return { data, error }
   },
 
-  async getTeamInsights(teamId) {
-    const { data, error } = await supabase
-      .from('ai_insights')
-      .select('*')
-      .eq('team_id', teamId)
-      .order('created_at', { ascending: false })
-    return { data, error }
-  },
-
-  async addInsight(insightData) {
+  async createInsight(insightData) {
     const { data, error } = await supabase
       .from('ai_insights')
       .insert(insightData)
       .select()
       .single()
+
     return { data, error }
   }
 }
 
-// Meetings
-export const meetingService = {
-  async getTeamMeetings(teamId) {
-    const { data, error } = await supabase
-      .from('meetings')
-      .select(`
-        *,
-        users (
-          id,
-          first_name,
-          last_name,
-          email
-        )
-      `)
-      .eq('team_id', teamId)
-      .order('uploaded_at', { ascending: false })
-    return { data, error }
-  },
-
-  async uploadMeeting(meetingData) {
-    const { data, error } = await supabase
-      .from('meetings')
-      .insert(meetingData)
-      .select()
-      .single()
-    return { data, error }
-  },
-
-  async updateMeetingAnalysis(meetingId, analysisData) {
-    const { data, error } = await supabase
-      .from('meetings')
-      .update({
-        analyzed_at: new Date().toISOString(),
-        analysis_data: analysisData
-      })
-      .eq('id', meetingId)
-      .select()
-      .single()
-    return { data, error }
-  }
-}
-
-// Storage
-export const storageService = {
-  async uploadFile(bucket, path, file) {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file)
-    return { data, error }
-  },
-
-  getPublicUrl(bucket, path) {
-    const { data } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(path)
-    return data.publicUrl
-  },
-
-  async deleteFile(bucket, path) {
-    const { error } = await supabase.storage
-      .from(bucket)
-      .remove([path])
-    return { error }
-  }
-}
-
-// Real-time subscriptions
+// Realtime
 export const realtimeService = {
   subscribeToUserSignals(userId, callback) {
     return supabase
-      .channel(`user-signals-${userId}`)
+      .channel('user_signals')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'signals',
-          filter: `user_id=eq.${userId}`
-        },
-        callback
-      )
-      .subscribe()
-  },
-
-  subscribeToUserInsights(userId, callback) {
-    return supabase
-      .channel(`user-insights-${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ai_insights',
-          filter: `user_id=eq.${userId}`
-        },
-        callback
-      )
-      .subscribe()
-  },
-
-  subscribeToTeamInsights(teamId, callback) {
-    return supabase
-      .channel(`team-insights-${teamId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ai_insights',
-          filter: `team_id=eq.${teamId}`
-        },
-        callback
-      )
-      .subscribe()
-  },
-
-  subscribeToMeetings(teamId, callback) {
-    return supabase
-      .channel(`team-meetings-${teamId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'meetings',
-          filter: `team_id=eq.${teamId}`
+          filter: `team_member_id=eq.${userId}`
         },
         callback
       )
@@ -528,19 +427,38 @@ export const realtimeService = {
   }
 }
 
-// Edge function calls
-export const edgeFunctionService = {
-  async analyzeMeeting(meetingData) {
-    const { data, error } = await supabase.functions.invoke('analyze-meeting', {
-      body: meetingData
-    })
+// Meetings
+export const meetingService = {
+  async getMeetings() {
+    const { data, error } = await supabase
+      .from('meetings')
+      .select(`
+        *,
+        team_members:team_member_id(name, email)
+      `)
+      .order('created_at', { ascending: false })
+
     return { data, error }
   },
 
-  async processSurvey(surveyData) {
-    const { data, error } = await supabase.functions.invoke('process-survey', {
-      body: surveyData
-    })
+  async createMeeting(meetingData) {
+    const { data, error } = await supabase
+      .from('meetings')
+      .insert(meetingData)
+      .select()
+      .single()
+
+    return { data, error }
+  },
+
+  async updateMeeting(meetingId, updates) {
+    const { data, error } = await supabase
+      .from('meetings')
+      .update(updates)
+      .eq('id', meetingId)
+      .select()
+      .single()
+
     return { data, error }
   }
 } 

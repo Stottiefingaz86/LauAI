@@ -10,7 +10,8 @@ import {
   X,
   User,
   Bell,
-  Search
+  Search,
+  CreditCard
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Dock from './Dock';
@@ -29,6 +30,7 @@ const AppShell = ({ children }) => {
         { name: 'Dashboard', icon: Home, path: '/app/dashboard' },
         { name: 'Teams', icon: Users, path: '/app/teams' },
         { name: 'Surveys', icon: BarChart3, path: '/app/surveys' },
+        { name: 'Billing', icon: CreditCard, path: '/app/billing' },
         { name: 'Settings', icon: Settings, path: '/app/settings' }
       ];
     } else if (isMember) {

@@ -1,100 +1,122 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import LandingPage from './pages/LandingPage';
-import LoginPage from './pages/LoginPage';
-import SignupPage from './pages/SignupPage';
 import AppShell from './components/AppShell';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Teams from './pages/Teams';
-import TeamMember from './pages/TeamMember';
 import Surveys from './pages/Surveys';
-import EntryFlow from './pages/EntryFlow';
+import Billing from './pages/Billing';
+import TeamMember from './pages/TeamMember';
 import SurveyPage from './pages/SurveyPage';
+import EntryFlow from './pages/EntryFlow';
+import InvitePage from './pages/InvitePage';
 
-function AppRoutes() {
-  const { user, loading } = useAuth();
+// Protected Route Component
+const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager', 'leader'] }) => {
+  const { isAuthenticated, userRole, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <div className="glass-card p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-mint mx-auto mb-4"></div>
-          <p className="text-muted">Loading...</p>
+      <div className="min-h-screen bg-gradient-bg flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <div className="w-8 h-8 border-4 border-mint-dark border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <p className="text-white">Loading...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/" element={
-        user ? <Navigate to="/app/dashboard" /> : <LandingPage />
-      } />
-      <Route path="/login" element={
-        user ? <Navigate to="/app/dashboard" /> : <LoginPage />
-      } />
-      <Route path="/signup" element={
-        user ? <Navigate to="/app/dashboard" /> : <SignupPage />
-      } />
-      
-      {/* Survey routes (public) */}
-      <Route path="/survey/:surveyId/:userId" element={<SurveyPage />} />
-      
-      {/* Protected app routes */}
-      <Route path="/app/dashboard" element={
-        user ? (
-          <AppShell>
-            <Dashboard />
-          </AppShell>
-        ) : <Navigate to="/login" />
-      } />
-      <Route path="/app/teams" element={
-        user ? (
-          <AppShell>
-            <Teams />
-          </AppShell>
-        ) : <Navigate to="/login" />
-      } />
-      <Route path="/app/teams/:memberId" element={
-        user ? (
-          <AppShell>
-            <TeamMember />
-          </AppShell>
-        ) : <Navigate to="/login" />
-      } />
-      <Route path="/app/surveys" element={
-        user ? (
-          <AppShell>
-            <Surveys />
-          </AppShell>
-        ) : <Navigate to="/login" />
-      } />
-      <Route path="/app/entry" element={
-        user ? (
-          <AppShell>
-            <EntryFlow />
-          </AppShell>
-        ) : <Navigate to="/login" />
-      } />
-      
-      {/* Catch all route */}
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
-  );
-}
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
-function App() {
+  if (!allowedRoles.includes(userRole)) {
+    return (
+      <div className="min-h-screen bg-gradient-bg flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-white text-2xl">⚠️</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
+          <p className="text-gray-300">You don't have permission to access this page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return children;
+};
+
+// Main App Component
+const AppContent = () => {
+  const { isAuthenticated, userRole } = useAuth();
+
+  return (
+    <Router>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={isAuthenticated ? <Navigate to="/app/dashboard" replace /> : <Login />} />
+        
+        {/* Invitation Route (Public) */}
+        <Route path="/invite/:inviteId" element={<InvitePage />} />
+        
+        {/* Protected App Routes */}
+        <Route path="/app" element={
+          <ProtectedRoute>
+            <AppShell>
+              <Routes>
+                <Route path="dashboard" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } />
+                <Route path="teams" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <Teams />
+                  </ProtectedRoute>
+                } />
+                <Route path="surveys" element={<Surveys />} />
+                <Route path="billing" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <Billing />
+                  </ProtectedRoute>
+                } />
+                <Route path="member/:memberId" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <TeamMember />
+                  </ProtectedRoute>
+                } />
+                <Route path="entry" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <EntryFlow />
+                  </ProtectedRoute>
+                } />
+                <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+              </Routes>
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        {/* Survey Taking Route (Public) */}
+        <Route path="/survey/:surveyId/:userId" element={<SurveyPage />} />
+        
+        {/* Catch all route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
+  );
+};
+
+// Root App Component with Auth Provider
+const App = () => {
   return (
     <AuthProvider>
-      <Router>
-        <div className="App">
-          <AppRoutes />
-        </div>
-      </Router>
+      <AppContent />
     </AuthProvider>
   );
-}
+};
 
 export default App; 
