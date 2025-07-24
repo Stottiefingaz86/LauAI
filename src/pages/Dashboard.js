@@ -38,23 +38,37 @@ const Dashboard = () => {
   const [showIssuesModal, setShowIssuesModal] = useState(false);
   const [showRecommendationsModal, setShowRecommendationsModal] = useState(false);
 
+  // Add debugging
+  console.log('Dashboard render - user:', user);
+  console.log('Dashboard render - loading:', loading);
+  console.log('Dashboard render - error:', error);
+
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    console.log('Dashboard useEffect - user changed:', user);
+    if (user) {
+      loadDashboardData();
+    } else {
+      console.log('Dashboard useEffect - no user, setting loading false');
+      setLoading(false);
+    }
+  }, [user]);
 
   const loadDashboardData = async () => {
     try {
+      console.log('Loading dashboard data for user:', user?.id);
       setLoading(true);
       setError(null);
       
       // Load signals
       const { data: signalsData, error: signalsError } = await signalService.getSignals();
+      console.log('Signals loaded:', signalsData, 'Error:', signalsError);
       if (signalsError) {
         console.warn('Signals loading error:', signalsError);
       }
       
       // Load insights
       const { data: insightsData, error: insightsError } = await insightService.getInsights();
+      console.log('Insights loaded:', insightsData, 'Error:', insightsError);
       if (insightsError) {
         console.warn('Insights loading error:', insightsError);
       }
@@ -75,11 +89,14 @@ const Dashboard = () => {
         recommendations: insightsData?.filter(i => i.action_items?.length > 0) || []
       });
 
+      console.log('Dashboard data set:', dashboardData);
+
       return () => unsubscribe?.();
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       setError('Failed to load dashboard data. Please try again.');
     } finally {
+      console.log('Setting loading to false');
       setLoading(false);
     }
   };
