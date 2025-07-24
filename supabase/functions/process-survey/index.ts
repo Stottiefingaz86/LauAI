@@ -66,8 +66,9 @@ serve(async (req) => {
       )
     }
 
-    // Analyze survey responses
-    const analysis = await analyzeSurveyResponses(responses)
+    // Analyze survey responses with OpenAI
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    const analysis = await analyzeSurveyResponsesWithAI(responses, openaiApiKey)
 
     // Store analysis insights
     const { data: insightData, error: insightError } = await supabase
@@ -139,8 +140,80 @@ serve(async (req) => {
   }
 })
 
+async function analyzeSurveyResponsesWithAI(responses: any[], apiKey?: string) {
+  try {
+    if (!apiKey) {
+      throw new Error('OpenAI API key not available');
+    }
+
+    // Format responses for analysis
+    const responseText = responses.map((r, index) => 
+      `Question ${index + 1}: ${JSON.stringify(r.response_data)}`
+    ).join('\n');
+
+    // Use OpenAI to analyze the responses
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an AI assistant that analyzes survey responses. 
+            Provide insights on satisfaction score, sentiment, key themes, and recommendations.
+            Return your analysis as a JSON object with the following structure:
+            {
+              "satisfaction_score": 8.5,
+              "overall_sentiment": "positive|negative|neutral",
+              "key_themes": ["theme1", "theme2"],
+              "recommendations": ["recommendation1", "recommendation2"],
+              "response_count": 5,
+              "summary": "Brief summary of the survey analysis"
+            }`
+          },
+          {
+            role: 'user',
+            content: `Analyze these survey responses: ${responseText}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const analysisText = data.choices[0].message.content;
+    
+    // Parse the JSON response
+    const analysis = JSON.parse(analysisText);
+    
+    return {
+      satisfaction_score: analysis.satisfaction_score || 7.5,
+      overall_sentiment: analysis.overall_sentiment || 'neutral',
+      key_themes: analysis.key_themes || [],
+      recommendations: analysis.recommendations || [],
+      response_count: responses.length,
+      summary: analysis.summary || 'Survey analysis completed successfully.'
+    };
+
+  } catch (error) {
+    console.error('Error calling OpenAI:', error);
+    
+    // Fallback to basic analysis if OpenAI fails
+    return analyzeSurveyResponses(responses);
+  }
+}
+
 async function analyzeSurveyResponses(responses: any[]) {
-  // Analyze survey responses and generate insights
+  // Basic analysis without OpenAI
   const totalResponses = responses.length
   const positiveResponses = responses.filter(r => 
     r.response_data?.rating > 7 || 

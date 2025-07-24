@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileVideo, Clock, Users, Calendar, ArrowLeft, CheckCircle } from 'lucide-react';
-import { meetingService, storageService, useAuth } from '../lib/supabaseService';
+import { Upload, FileVideo, ArrowLeft, CheckCircle } from 'lucide-react';
+import { meetingService, storageService } from '../lib/supabaseService';
+import { useAuth } from '../contexts/AuthContext';
 
 const EntryFlow = () => {
   const [uploadStep, setUploadStep] = useState(1);

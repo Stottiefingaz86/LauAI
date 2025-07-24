@@ -12,7 +12,8 @@ import {
   Download,
   Filter
 } from 'lucide-react';
-import { signalService, insightService, realtimeService, useAuth } from '../lib/supabaseService';
+import { signalService, insightService, realtimeService } from '../lib/supabaseService';
+import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
   const { user } = useAuth();

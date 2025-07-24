@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
-import { surveyService, useAuth } from '../lib/supabaseService';
+import { surveyService } from '../lib/supabaseService';
+import { useAuth } from '../contexts/AuthContext';
 
 const SurveyPage = () => {
   const { surveyId, userId } = useParams();
