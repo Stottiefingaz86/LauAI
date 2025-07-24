@@ -106,7 +106,7 @@ CREATE TABLE public.ai_insights (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
   team_id UUID REFERENCES public.teams(id),
-  insight_type TEXT NOT NULL, -- 'performance', 'concern', 'recommendation'
+  insight_type TEXT NOT NULL, -- 'performance', 'concern', 'recommendation', 'meeting_analysis', 'survey_analysis'
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   severity TEXT DEFAULT 'medium', -- 'low', 'medium', 'high'
@@ -219,4 +219,95 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Trigger to create user profile
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user(); 
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Function to trigger meeting analysis when recording is uploaded
+CREATE OR REPLACE FUNCTION trigger_meeting_analysis()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only trigger if recording_url is provided and not already analyzed
+  IF NEW.recording_url IS NOT NULL AND NEW.analyzed_at IS NULL THEN
+    -- Call the analyze-meeting edge function
+    PERFORM net.http_post(
+      url := 'https://ycmiaagfyszjqmfhsgqb.supabase.co/functions/v1/analyze-meeting',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || current_setting('app.settings')::json->>'service_role_key'
+      ),
+      body := jsonb_build_object(
+        'meeting_id', NEW.id,
+        'recording_url', NEW.recording_url,
+        'user_id', NEW.uploaded_by,
+        'team_id', NEW.team_id
+      )
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger for meeting analysis
+CREATE TRIGGER trigger_meeting_analysis_trigger
+  AFTER INSERT OR UPDATE ON public.meetings
+  FOR EACH ROW EXECUTE FUNCTION trigger_meeting_analysis();
+
+-- Function to trigger survey analysis when responses are submitted
+CREATE OR REPLACE FUNCTION trigger_survey_analysis()
+RETURNS TRIGGER AS $$
+DECLARE
+  survey_responses_count INTEGER;
+  total_questions_count INTEGER;
+BEGIN
+  -- Count total responses for this survey and user
+  SELECT COUNT(*) INTO survey_responses_count
+  FROM public.survey_responses
+  WHERE survey_id = NEW.survey_id AND user_id = NEW.user_id;
+  
+  -- Count total questions in the survey
+  SELECT COUNT(*) INTO total_questions_count
+  FROM public.survey_questions
+  WHERE survey_id = NEW.survey_id;
+  
+  -- If all questions are answered, trigger analysis
+  IF survey_responses_count >= total_questions_count THEN
+    -- Get all responses for this survey and user
+    WITH user_responses AS (
+      SELECT 
+        sr.survey_id,
+        sr.user_id,
+        jsonb_agg(
+          jsonb_build_object(
+            'question_id', sr.question_id,
+            'response_data', sr.response_data
+          )
+        ) as responses
+      FROM public.survey_responses sr
+      WHERE sr.survey_id = NEW.survey_id AND sr.user_id = NEW.user_id
+      GROUP BY sr.survey_id, sr.user_id
+    )
+    SELECT net.http_post(
+      url := 'https://ycmiaagfyszjqmfhsgqb.supabase.co/functions/v1/process-survey',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || current_setting('app.settings')::json->>'service_role_key'
+      ),
+      body := jsonb_build_object(
+        'survey_id', survey_id,
+        'user_id', user_id,
+        'responses', responses,
+        'team_id', (SELECT team_id FROM public.surveys WHERE id = survey_id)
+      )
+    ) FROM user_responses;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger for survey analysis
+CREATE TRIGGER trigger_survey_analysis_trigger
+  AFTER INSERT ON public.survey_responses
+  FOR EACH ROW EXECUTE FUNCTION trigger_survey_analysis();
+
+-- Enable the http extension for edge function calls
+CREATE EXTENSION IF NOT EXISTS "http" WITH SCHEMA "extensions"; 

@@ -1,213 +1,72 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowRight, 
-  ArrowLeft,
-  CheckCircle,
-  Clock,
-  User,
-  Send,
-  X
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { surveyService, useAuth } from '../lib/supabaseService';
 
 const SurveyPage = () => {
   const { surveyId, userId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  const [surveyData, setSurveyData] = useState(null);
+  const [userData, setUserData] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [responses, setResponses] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [survey, setSurvey] = useState(null);
-  const [user, setUser] = useState(null);
-
-  // Mock survey data - in real app, this would come from API
-  const surveyData = {
-    1: {
-      id: 1,
-      name: 'Monthly Check-in',
-      description: 'Help us understand your experience this month',
-      questions: [
-        {
-          id: 1,
-          type: 'text',
-          question: 'What achievement are you most proud of this month?',
-          required: true,
-          placeholder: 'Share your biggest accomplishment...'
-        },
-        {
-          id: 2,
-          type: 'rating',
-          question: 'How would you rate your collaboration with the team?',
-          required: true,
-          scale: 5,
-          labels: {
-            1: 'Poor',
-            2: 'Fair', 
-            3: 'Good',
-            4: 'Very Good',
-            5: 'Excellent'
-          }
-        },
-        {
-          id: 3,
-          type: 'multiple_choice',
-          question: 'Any energy drain or motivation issues you\'d like to discuss?',
-          required: false,
-          options: ['Yes, significant issues', 'Yes, minor issues', 'No issues', 'Prefer not to say']
-        },
-        {
-          id: 4,
-          type: 'text',
-          question: 'What did you learn recently that excites you?',
-          required: false,
-          placeholder: 'Share something new you learned...'
-        },
-        {
-          id: 5,
-          type: 'rating',
-          question: 'How supported do you feel in your role?',
-          required: true,
-          scale: 5,
-          labels: {
-            1: 'Not Supported',
-            2: 'Somewhat Supported',
-            3: 'Supported',
-            4: 'Well Supported',
-            5: 'Very Well Supported'
-          }
-        }
-      ]
-    },
-    2: {
-      id: 2,
-      name: 'Quarterly Review',
-      description: 'Comprehensive assessment for career development and goal setting',
-      questions: [
-        {
-          id: 1,
-          type: 'text',
-          question: 'What are your biggest accomplishments this quarter?',
-          required: true,
-          placeholder: 'Describe your key achievements...'
-        },
-        {
-          id: 2,
-          type: 'text',
-          question: 'What challenges did you face and how did you overcome them?',
-          required: true,
-          placeholder: 'Share your challenges and solutions...'
-        },
-        {
-          id: 3,
-          type: 'text',
-          question: 'What are your goals for the next quarter?',
-          required: true,
-          placeholder: 'What would you like to achieve?'
-        },
-        {
-          id: 4,
-          type: 'text',
-          question: 'How can we better support your growth and development?',
-          required: false,
-          placeholder: 'What support do you need?'
-        },
-        {
-          id: 5,
-          type: 'text',
-          question: 'What feedback do you have for the team or leadership?',
-          required: false,
-          placeholder: 'Share your thoughts and suggestions...'
-        }
-      ]
-    },
-    3: {
-      id: 3,
-      name: 'Well-being Check',
-      description: 'Focused survey on mental health and work-life balance',
-      questions: [
-        {
-          id: 1,
-          type: 'rating',
-          question: 'How would you rate your current stress level?',
-          required: true,
-          scale: 5,
-          labels: {
-            1: 'Very Low',
-            2: 'Low',
-            3: 'Moderate',
-            4: 'High',
-            5: 'Very High'
-          }
-        },
-        {
-          id: 2,
-          type: 'multiple_choice',
-          question: 'Are you experiencing any burnout symptoms?',
-          required: true,
-          options: ['Yes, severe', 'Yes, moderate', 'Yes, mild', 'No', 'Not sure']
-        },
-        {
-          id: 3,
-          type: 'text',
-          question: 'What would help improve your work-life balance?',
-          required: false,
-          placeholder: 'Share your suggestions...'
-        },
-        {
-          id: 4,
-          type: 'rating',
-          question: 'How supported do you feel in managing your workload?',
-          required: true,
-          scale: 5,
-          labels: {
-            1: 'Not Supported',
-            2: 'Somewhat Supported',
-            3: 'Supported',
-            4: 'Well Supported',
-            5: 'Very Well Supported'
-          }
-        },
-        {
-          id: 5,
-          type: 'text',
-          question: 'What activities help you recharge outside of work?',
-          required: false,
-          placeholder: 'Share your favorite activities...'
-        }
-      ]
-    }
-  };
-
-  // Mock user data - in real app, this would come from API
-  const userData = {
-    '123': { name: 'Sarah Chen', role: 'Senior Designer', department: 'Design' },
-    '456': { name: 'Mike Johnson', role: 'Frontend Engineer', department: 'Engineering' },
-    '789': { name: 'Emma Davis', role: 'Product Manager', department: 'Product' }
-  };
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load survey and user data
-    const survey = surveyData[surveyId];
-    const user = userData[userId];
-    
-    if (!survey || !user) {
-      // Redirect to error page or show error
-      navigate('/');
-      return;
-    }
-    
-    setSurvey(survey);
-    setUser(user);
-  }, [surveyId, userId, navigate]);
+    const loadSurveyData = async () => {
+      try {
+        // Load survey and questions
+        const { data: survey, error: surveyError } = await surveyService.getSurveys();
+        const surveyItem = survey?.find(s => s.id === surveyId);
+        
+        if (!surveyItem) {
+          setError('Survey not found');
+          return;
+        }
 
-  const handleResponse = (questionId, value) => {
+        const { data: questions, error: questionsError } = await surveyService.getSurveyQuestions(surveyId);
+        
+        if (questionsError) {
+          setError('Failed to load survey questions');
+          return;
+        }
+
+        setSurveyData({
+          ...surveyItem,
+          questions: questions || []
+        });
+
+        // Load user data
+        setUserData({
+          id: userId,
+          name: 'Survey Participant',
+          email: 'participant@example.com'
+        });
+
+      } catch (error) {
+        console.error('Error loading survey:', error);
+        setError('Failed to load survey');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSurveyData();
+  }, [surveyId, userId]);
+
+  const handleResponse = (questionId, response) => {
     setResponses(prev => ({
       ...prev,
-      [questionId]: value
+      [questionId]: response
     }));
   };
 
   const handleNext = () => {
-    if (currentQuestion < survey.questions.length - 1) {
+    if (currentQuestion < surveyData.questions.length - 1) {
       setCurrentQuestion(prev => prev + 1);
     }
   };
@@ -219,204 +78,246 @@ const SurveyPage = () => {
   };
 
   const handleSubmit = async () => {
+    if (!surveyData || !user) {
+      setError('Survey data or user not available');
+      return;
+    }
+
     setIsSubmitting(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      // In real app, send responses to backend
-      console.log('Survey responses:', {
-        surveyId,
-        userId,
-        responses,
-        submittedAt: new Date().toISOString()
-      });
-      
+    setError('');
+
+    try {
+      // Submit all responses
+      const responsePromises = Object.entries(responses).map(([questionId, responseData]) =>
+        surveyService.submitSurveyResponse({
+          survey_id: surveyId,
+          user_id: user.id,
+          question_id: questionId,
+          response_data: responseData
+        })
+      );
+
+      const results = await Promise.all(responsePromises);
+      const errors = results.filter(result => result.error);
+
+      if (errors.length > 0) {
+        throw new Error('Failed to submit some responses');
+      }
+
+      // The database trigger will automatically call the process-survey edge function
+      console.log('Survey submitted successfully. Analysis will be triggered automatically.');
+
+      // Show success message and redirect
+      setTimeout(() => {
+        navigate('/app/dashboard');
+      }, 2000);
+
+    } catch (error) {
+      console.error('Submission error:', error);
+      setError('Failed to submit survey responses');
+    } finally {
       setIsSubmitting(false);
-      // Redirect to thank you page or show success message
-      navigate('/survey/thank-you');
-    }, 2000);
+    }
   };
 
-  const currentQ = survey?.questions[currentQuestion];
-  const progress = ((currentQuestion + 1) / survey?.questions.length) * 100;
-  const canProceed = currentQ?.required ? responses[currentQ.id] : true;
+  const renderQuestion = (question) => {
+    const currentResponse = responses[question.id] || '';
 
-  if (!survey || !user) {
+    switch (question.question_type) {
+      case 'text':
+        return (
+          <textarea
+            value={currentResponse}
+            onChange={(e) => handleResponse(question.id, e.target.value)}
+            className="glass-textarea w-full h-32"
+            placeholder="Type your response here..."
+          />
+        );
+
+      case 'rating':
+        return (
+          <div className="flex justify-center space-x-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((rating) => (
+              <button
+                key={rating}
+                onClick={() => handleResponse(question.id, rating)}
+                className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all ${
+                  currentResponse === rating
+                    ? 'bg-mint text-black'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                {rating}
+              </button>
+            ))}
+          </div>
+        );
+
+      case 'multiple_choice':
+        return (
+          <div className="space-y-3">
+            {question.options?.map((option, index) => (
+              <button
+                key={index}
+                onClick={() => handleResponse(question.id, option)}
+                className={`w-full p-4 rounded-lg text-left transition-all ${
+                  currentResponse === option
+                    ? 'bg-mint text-black'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        );
+
+      default:
+        return (
+          <input
+            type="text"
+            value={currentResponse}
+            onChange={(e) => handleResponse(question.id, e.target.value)}
+            className="glass-input w-full"
+            placeholder="Type your response..."
+          />
+        );
+    }
+  };
+
+  if (isLoading) {
     return (
       <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 bg-red-400/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <X className="w-8 h-8 text-red-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Survey Not Found</h2>
-          <p className="text-white/60">This survey link is invalid or has expired.</p>
+        <div className="glass-card p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-mint mx-auto mb-4"></div>
+          <p className="text-muted">Loading survey...</p>
         </div>
       </div>
     );
   }
 
+  if (error || !surveyData) {
+    return (
+      <div className="min-h-screen gradient-bg flex items-center justify-center">
+        <div className="glass-card p-8 text-center">
+          <h2 className="text-2xl font-semibold text-white mb-4">Survey Not Found</h2>
+          <p className="text-muted mb-6">{error || 'The survey you\'re looking for doesn\'t exist.'}</p>
+          <button
+            onClick={() => navigate('/app/dashboard')}
+            className="glass-button"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentQuestionData = surveyData.questions[currentQuestion];
+  const progress = ((currentQuestion + 1) / surveyData.questions.length) * 100;
+  const isLastQuestion = currentQuestion === surveyData.questions.length - 1;
+  const hasResponse = responses[currentQuestionData?.id];
+
   return (
     <div className="min-h-screen gradient-bg">
       {/* Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 glass-topnav">
-        <div className="flex items-center justify-between h-16 px-6">
+      <div className="glass-topnav p-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <div className="w-8 h-8 bg-mint/20 rounded-full flex items-center justify-center">
-              <User className="w-4 h-4 text-mint" />
-            </div>
+            <button
+              onClick={() => navigate('/app/dashboard')}
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5 text-white" />
+            </button>
             <div>
-              <p className="text-white font-medium">{user.name}</p>
-              <p className="text-white/60 text-xs">{user.role} • {user.department}</p>
+              <h1 className="text-xl font-semibold text-white">{surveyData.title}</h1>
+              <p className="text-sm text-muted">
+                {userData?.name} • Question {currentQuestion + 1} of {surveyData.questions.length}
+              </p>
             </div>
           </div>
+          
           <div className="flex items-center space-x-2">
-            <Clock className="w-4 h-4 text-white/60" />
-            <span className="text-white/60 text-sm">Question {currentQuestion + 1} of {survey.questions.length}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="fixed top-16 left-0 right-0 z-30 bg-white/5">
-        <div className="h-1 bg-white/10">
-          <div 
-            className="h-full bg-mint transition-all duration-300 ease-out"
-            style={{ width: `${progress}%` }}
-          ></div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="pt-32 pb-20 px-6">
-        <div className="max-w-2xl mx-auto">
-          {/* Survey Header */}
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold text-white mb-4">{survey.name}</h1>
-            <p className="text-xl text-white/70">{survey.description}</p>
-          </div>
-
-          {/* Question */}
-          <div className="glass-card p-8 mb-8">
-            <div className="mb-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-mint/20 rounded-full flex items-center justify-center">
-                  <span className="text-mint font-semibold text-sm">{currentQuestion + 1}</span>
-                </div>
-                <span className="text-white/60 text-sm">
-                  {currentQ?.required ? 'Required' : 'Optional'}
-                </span>
-              </div>
-              <h2 className="text-2xl font-semibold text-white mb-4">{currentQ?.question}</h2>
+            <div className="w-32 h-2 bg-white/10 rounded-full">
+              <div 
+                className="h-2 bg-mint rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
             </div>
+            <span className="text-sm text-muted">{Math.round(progress)}%</span>
+          </div>
+        </div>
+      </div>
 
-            {/* Response Input */}
-            <div className="space-y-4">
-              {currentQ?.type === 'text' && (
-                <textarea
-                  className="glass-input w-full h-32 resize-none"
-                  placeholder={currentQ.placeholder || 'Type your response...'}
-                  value={responses[currentQ.id] || ''}
-                  onChange={(e) => handleResponse(currentQ.id, e.target.value)}
-                />
-              )}
+      {/* Question Content */}
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="glass-card p-8">
+          {currentQuestionData && (
+            <>
+              <div className="mb-8">
+                <h2 className="text-2xl font-semibold text-white mb-4">
+                  {currentQuestionData.question_text}
+                </h2>
+                {currentQuestionData.required && (
+                  <p className="text-sm text-muted">* Required</p>
+                )}
+              </div>
 
-              {currentQ?.type === 'rating' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-center space-x-4">
-                    {Array.from({ length: currentQ.scale }, (_, i) => i + 1).map((rating) => (
-                      <button
-                        key={rating}
-                        onClick={() => handleResponse(currentQ.id, rating)}
-                        className={`w-16 h-16 rounded-full flex items-center justify-center text-lg font-semibold transition-all duration-200 ${
-                          responses[currentQ.id] === rating
-                            ? 'bg-mint text-gray-900 shadow-lg scale-110'
-                            : 'bg-white/10 text-white hover:bg-white/20'
-                        }`}
-                      >
-                        {rating}
-                      </button>
-                    ))}
-                  </div>
-                  {currentQ.labels && responses[currentQ.id] && (
-                    <p className="text-center text-mint font-medium">
-                      {currentQ.labels[responses[currentQ.id]]}
-                    </p>
+              <div className="mb-8">
+                {renderQuestion(currentQuestionData)}
+              </div>
+
+              {/* Navigation */}
+              <div className="flex items-center justify-between pt-6 border-t border-white/10">
+                <button
+                  onClick={handlePrevious}
+                  disabled={currentQuestion === 0}
+                  className="flex items-center space-x-2 glass-button-secondary disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+
+                <div className="flex items-center space-x-4">
+                  {isLastQuestion ? (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || !hasResponse}
+                      className="flex items-center space-x-2 glass-button disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Submit Survey
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleNext}
+                      disabled={!hasResponse}
+                      className="flex items-center space-x-2 glass-button disabled:opacity-50"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
-              )}
+              </div>
 
-              {currentQ?.type === 'multiple_choice' && (
-                <div className="space-y-3">
-                  {currentQ.options.map((option) => (
-                    <button
-                      key={option}
-                      onClick={() => handleResponse(currentQ.id, option)}
-                      className={`w-full p-4 rounded-lg text-left transition-all duration-200 ${
-                        responses[currentQ.id] === option
-                          ? 'bg-mint text-gray-900 shadow-lg'
-                          : 'bg-white/10 text-white hover:bg-white/20'
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
+              {error && (
+                <div className="mt-4 bg-red-500/20 border border-red-500/30 rounded-lg p-4 text-red-300">
+                  {error}
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={handlePrevious}
-              disabled={currentQuestion === 0}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 ${
-                currentQuestion === 0
-                  ? 'text-white/30 cursor-not-allowed'
-                  : 'text-white hover:bg-white/10'
-              }`}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Previous</span>
-            </button>
-
-            {currentQuestion === survey.questions.length - 1 ? (
-              <button
-                onClick={handleSubmit}
-                disabled={!canProceed || isSubmitting}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 ${
-                  canProceed && !isSubmitting
-                    ? 'bg-mint text-gray-900 hover:bg-mint-dark'
-                    : 'bg-white/20 text-white/60 cursor-not-allowed'
-                }`}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>Submitting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>Submit Survey</span>
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={handleNext}
-                disabled={!canProceed}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 ${
-                  canProceed
-                    ? 'bg-mint text-gray-900 hover:bg-mint-dark'
-                    : 'bg-white/20 text-white/60 cursor-not-allowed'
-                }`}
-              >
-                <span>Next</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>
