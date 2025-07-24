@@ -83,7 +83,7 @@ const AppContent = () => {
             <AppShell>
               <Routes>
                 <Route path="dashboard" element={
-                  <ProtectedRoute allowedRoles={['admin', 'manager', 'leader']}>
+                  <ProtectedRoute allowedRoles={['admin', 'manager', 'leader', 'member']}>
                     <Dashboard />
                   </ProtectedRoute>
                 } />
