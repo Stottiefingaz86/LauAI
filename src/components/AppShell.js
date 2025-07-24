@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Dock from './Dock';
+import Logo from './Logo';
 
 const AppShell = ({ children }) => {
   const { user, signOut, isAdmin, isMember, isManager, isLeader, isMasterAccount, billingInfo } = useAuth();
@@ -120,92 +121,74 @@ const AppShell = ({ children }) => {
   }, []);
 
   const getRoleDisplayName = () => {
-    if (isAdmin) return 'Administrator';
+    if (isMasterAccount) return 'Master';
+    if (isAdmin) return 'Admin';
     if (isManager) return 'Manager';
-    if (isLeader) return 'Team Leader';
-    if (isMember) return 'Team Member';
-    return 'User';
+    if (isLeader) return 'Leader';
+    return 'Member';
   };
 
   const getRoleBadge = () => {
     if (isMasterAccount) {
       return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-mint to-mint-dark rounded-full text-xs font-medium text-white">
+        <div className="flex items-center gap-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-2 py-1 rounded-full text-xs">
           <Crown size={10} />
           <span>Master</span>
         </div>
       );
-    } else if (isAdmin) {
+    }
+    if (isAdmin) {
       return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-400 rounded-full text-xs font-medium">
+        <div className="flex items-center gap-1 bg-red-500 text-white px-2 py-1 rounded-full text-xs">
           <Shield size={10} />
           <span>Admin</span>
         </div>
       );
-    } else if (isManager) {
+    }
+    if (isManager) {
       return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium">
-          <Star size={10} />
+        <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-full text-xs">
+          <Users size={10} />
           <span>Manager</span>
         </div>
       );
-    } else if (isLeader) {
+    }
+    if (isLeader) {
       return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-medium">
+        <div className="flex items-center gap-1 bg-green-500 text-white px-2 py-1 rounded-full text-xs">
           <Star size={10} />
           <span>Leader</span>
         </div>
       );
-    } else {
-      return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-gray-500/20 text-gray-400 rounded-full text-xs font-medium">
-          <User size={10} />
-          <span>Member</span>
-        </div>
-      );
     }
+    return (
+      <div className="flex items-center gap-1 bg-gray-500 text-white px-2 py-1 rounded-full text-xs">
+        <User size={10} />
+        <span>Member</span>
+      </div>
+    );
   };
 
   const getPlanStatus = () => {
     if (isMasterAccount) {
       return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-mint to-mint-dark rounded-full text-xs font-medium text-white">
+        <div className="flex items-center gap-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-2 py-1 rounded-full text-xs">
           <Crown size={10} />
           <span>Master Plan</span>
         </div>
       );
     }
-
-    // For regular users, show plan status
     const plan = billingInfo.plan || 'basic';
-    const isTrial = plan === 'trial';
-    
-    if (isTrial) {
-      const daysLeft = billingInfo.trialDaysLeft || 14;
-      return (
-        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs font-medium">
-          <Clock size={10} />
-          <span>Trial - {daysLeft} days left</span>
-        </div>
-      );
-    } else {
-      const planColors = {
-        basic: 'bg-blue-500/20 text-blue-400',
-        pro: 'bg-purple-500/20 text-purple-400',
-        enterprise: 'bg-green-500/20 text-green-400'
-      };
-      
-      return (
-        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${planColors[plan] || planColors.basic}`}>
-          <Star size={10} />
-          <span className="capitalize">{plan} Plan</span>
-        </div>
-      );
-    }
+    return (
+      <div className="flex items-center gap-1 bg-green-500 text-white px-2 py-1 rounded-full text-xs">
+        <Star size={10} />
+        <span className="capitalize">{plan} Plan</span>
+      </div>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-gradient-bg">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div 
@@ -215,19 +198,14 @@ const AppShell = ({ children }) => {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-glass-sidebar backdrop-blur-xl border-r border-white/10 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-white/5 backdrop-blur-xl border-r border-white/10 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center justify-between p-6 border-b border-white/10">
             <Link to="/app/dashboard" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-mint to-mint-dark rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">L</span>
-              </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-mint to-mint-dark bg-clip-text text-transparent">
-                LauAI
-              </span>
+              <Logo size="md" />
             </Link>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -249,7 +227,7 @@ const AppShell = ({ children }) => {
                   to={item.path}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                     isActive 
-                      ? 'bg-mint text-black font-medium' 
+                      ? 'bg-gradient-to-r from-green-400 to-emerald-500 text-gray-900 font-medium' 
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   }`}
                   onClick={() => setSidebarOpen(false)}
@@ -264,8 +242,8 @@ const AppShell = ({ children }) => {
           {/* User section */}
           <div className="p-4 border-t border-white/10">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 bg-mint-accent rounded-full flex items-center justify-center">
-                <span className="text-mint-dark font-semibold">
+              <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full flex items-center justify-center">
+                <span className="text-gray-900 font-semibold">
                   {user?.email?.charAt(0).toUpperCase() || 'U'}
                 </span>
               </div>
@@ -294,7 +272,7 @@ const AppShell = ({ children }) => {
       {/* Main content */}
       <div className="lg:pl-64">
         {/* Top navigation */}
-        <header className="bg-glass-topnav backdrop-blur-xl border-b border-white/10 sticky top-0 z-30">
+        <header className="bg-white/5 backdrop-blur-xl border-b border-white/10 sticky top-0 z-30">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button
@@ -303,53 +281,28 @@ const AppShell = ({ children }) => {
               >
                 <Menu size={20} className="text-white" />
               </button>
-              
-              <div className="hidden md:flex items-center gap-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60 w-4 h-4" />
-                  <input
-                    type="text"
-                    placeholder="Search..."
-                    className="pl-10 pr-4 py-2 bg-white/10 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-mint/50"
-                  />
-                </div>
-              </div>
+              <Logo size="sm" showText={false} />
             </div>
-
+            
             <div className="flex items-center gap-4">
-              <button className="p-2 rounded-lg hover:bg-white/10 relative">
-                <Bell size={20} className="text-white" />
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+              <button className="p-2 rounded-lg hover:bg-white/10">
+                <Search size={20} className="text-white" />
               </button>
-              
-              <div className="hidden md:flex items-center gap-3">
-                <div className="w-8 h-8 bg-mint-accent rounded-full flex items-center justify-center">
-                  <span className="text-mint-dark font-semibold text-sm">
-                    {user?.email?.charAt(0).toUpperCase() || 'U'}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-white">
-                    {user?.email || 'User'}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    {getRoleBadge()}
-                    {getPlanStatus()}
-                  </div>
-                </div>
-              </div>
+              <button className="p-2 rounded-lg hover:bg-white/10">
+                <Bell size={20} className="text-white" />
+              </button>
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="min-h-screen">
+        <main className="p-6">
           {children}
         </main>
       </div>
 
-      {/* Dock - Only show for admins */}
-      {isAdmin && dockVisible && <Dock />}
+      {/* Dock */}
+      {dockVisible && <Dock />}
     </div>
   );
 };

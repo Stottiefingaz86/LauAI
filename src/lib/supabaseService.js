@@ -1,4 +1,8 @@
 import { supabase } from './supabase'
+import { paymentService, plans } from './paymentService'
+
+// Production URL configuration
+const PRODUCTION_URL = 'https://lau-r6el3zy53-chris-projects-e99bc8f6.vercel.app';
 
 // Authentication
 export const authService = {
@@ -7,6 +11,8 @@ export const authService = {
   },
 
   async signUp(email, password, firstName, lastName, role = 'member') {
+    console.log('Starting signup process...', { email, firstName, lastName, role });
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -17,8 +23,28 @@ export const authService = {
           role: role
         }
       }
-    })
-    return { data, error }
+    });
+    
+    console.log('Supabase signup response:', { data, error });
+    
+    // If signup successful and email confirmation is disabled, auto-sign in
+    if (data?.user && !data.user.email_confirmed_at) {
+      console.log('User created but email not confirmed, attempting auto-signin');
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (signInError) {
+        console.error('Auto-signin failed:', signInError);
+        return { data, error: signInError };
+      }
+      
+      console.log('Auto-signin successful:', signInData);
+      return { data: signInData, error: null };
+    }
+    
+    return { data, error };
   },
 
   async signIn(email, password) {
@@ -58,32 +84,107 @@ export const authService = {
   }
 }
 
-// Billing and Subscription
+// Storage Service for file uploads
+export const storageService = {
+  async uploadFile(bucket, path, file) {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false
+      })
+    return { data, error }
+  },
+
+  getPublicUrl(bucket, path) {
+    const { data } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+    return data.publicUrl
+  },
+
+  async deleteFile(bucket, path) {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .remove([path])
+    return { data, error }
+  },
+
+  async listFiles(bucket, path = '') {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .list(path)
+    return { data, error }
+  }
+}
+
+// Billing and Subscription with Payment API Integration
 export const billingService = {
   async getBillingInfo(userId) {
-    // This would typically fetch from your billing service (Stripe, etc.)
-    const { data, error } = await supabase
-      .from('billing_info')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    try {
+      // First try to get billing info from Supabase
+      const { data: supabaseData, error: supabaseError } = await supabase
+        .from('billing_info')
+        .select('*')
+        .eq('user_id', userId)
+        .single()
 
-    if (error && error.code !== 'PGRST116') {
-      return { data: null, error }
-    }
+      if (supabaseError && supabaseError.code !== 'PGRST116') {
+        console.error('Supabase billing error:', supabaseError)
+      }
 
-    // Return default billing info if none exists
-    return {
-      data: data || {
-        plan: 'basic',
-        seats: 1,
-        used_seats: 1,
-        total_seats: 1,
-        monthly_cost: 20,
-        next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        invite_link: `${window.location.origin}/invite/${userId}`
-      },
-      error: null
+      // If we have billing info with a customer_id, try to get updated info from payment API
+      if (supabaseData?.customer_id) {
+        const { data: paymentData, error: paymentError } = await paymentService.getCustomerBilling(supabaseData.customer_id)
+        
+        if (!paymentError && paymentData) {
+          // Update Supabase with latest payment API data
+          const updatedBillingInfo = {
+            ...supabaseData,
+            plan: paymentData.plan || supabaseData.plan,
+            seats: paymentData.seats || supabaseData.seats,
+            used_seats: paymentData.used_seats || supabaseData.used_seats,
+            total_seats: paymentData.total_seats || supabaseData.total_seats,
+            monthly_cost: paymentData.monthly_cost || supabaseData.monthly_cost,
+            next_billing_date: paymentData.next_billing_date || supabaseData.next_billing_date,
+            subscription_status: paymentData.status || supabaseData.subscription_status,
+            updated_at: new Date().toISOString()
+          }
+
+          await this.updateBillingInfo(userId, updatedBillingInfo)
+          return { data: updatedBillingInfo, error: null }
+        }
+      }
+
+      // Return Supabase data or default billing info
+      return {
+        data: supabaseData || {
+          plan: 'basic',
+          seats: 1,
+          used_seats: 1,
+          total_seats: 1,
+          monthly_cost: 20,
+          next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          invite_link: `${PRODUCTION_URL}/invite/${userId}`,
+          subscription_status: 'trial'
+        },
+        error: null
+      }
+    } catch (error) {
+      console.error('Error getting billing info:', error)
+      return {
+        data: {
+          plan: 'basic',
+          seats: 1,
+          used_seats: 1,
+          total_seats: 1,
+          monthly_cost: 20,
+          next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          invite_link: `${PRODUCTION_URL}/invite/${userId}`,
+          subscription_status: 'trial'
+        },
+        error: null
+      }
     }
   },
 
@@ -99,6 +200,100 @@ export const billingService = {
       .single()
 
     return { data, error }
+  },
+
+  async createPaymentSession(planData) {
+    try {
+      const { data, error } = await paymentService.createPaymentSession(planData)
+      
+      if (error) {
+        return { data: null, error }
+      }
+
+      // Store session info in Supabase for tracking
+      await supabase
+        .from('payment_sessions')
+        .insert({
+          session_id: data.session_id,
+          user_id: planData.userId,
+          plan: planData.plan,
+          seats: planData.seats,
+          amount: planData.amount,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        })
+
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error creating payment session:', error)
+      return { data: null, error }
+    }
+  },
+
+  async getPaymentSession(sessionId) {
+    try {
+      const { data, error } = await paymentService.getPaymentSession(sessionId)
+      
+      if (error) {
+        return { data: null, error }
+      }
+
+      // Update session status in Supabase
+      await supabase
+        .from('payment_sessions')
+        .update({ 
+          status: data.status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('session_id', sessionId)
+
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error getting payment session:', error)
+      return { data: null, error }
+    }
+  },
+
+  async createCustomer(customerData) {
+    try {
+      const { data, error } = await paymentService.createCustomer(customerData)
+      
+      if (error) {
+        return { data: null, error }
+      }
+
+      // Store customer info in Supabase
+      await supabase
+        .from('customers')
+        .insert({
+          customer_id: data.customer_id,
+          user_id: customerData.userId,
+          email: customerData.email,
+          name: customerData.name,
+          created_at: new Date().toISOString()
+        })
+
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error creating customer:', error)
+      return { data: null, error }
+    }
+  },
+
+  async getPlans() {
+    try {
+      const { data, error } = await paymentService.getPlans()
+      
+      if (error) {
+        // Fallback to local plans if API fails
+        return { data: Object.values(plans), error: null }
+      }
+
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error getting plans:', error)
+      return { data: Object.values(plans), error: null }
+    }
   },
 
   async getInvitations(userId) {
@@ -126,13 +321,14 @@ export const billingService = {
       .from('invitations')
       .select('*')
       .eq('id', inviteId)
+      .eq('status', 'pending')
       .single()
 
     return { data, error }
   }
 }
 
-// Teams
+// Team Management
 export const teamService = {
   async getTeams() {
     const { data, error } = await supabase
@@ -165,165 +361,78 @@ export const teamService = {
   },
 
   async deleteTeam(teamId) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('teams')
       .delete()
       .eq('id', teamId)
 
-    return { error }
+    return { data, error }
   }
 }
 
-// Members
+// Member Management
 export const memberService = {
   async getMembers() {
     const { data, error } = await supabase
-      .from('team_members')
+      .from('members')
       .select(`
         *,
-        teams:team_id(name),
-        signals:signals(value, created_at),
-        meetings:meetings(id, title, description, created_at, recording_url, analyzed_at, analysis_data),
-        surveys:survey_responses(survey_id, response_data, submitted_at)
+        team:teams(name)
       `)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
 
-    return { data, error };
+    return { data, error }
   },
 
   async getMemberById(memberId) {
     const { data, error } = await supabase
-      .from('team_members')
+      .from('members')
       .select(`
         *,
-        teams:team_id(name),
-        signals:signals(value, created_at, signal_type, notes),
-        meetings:meetings(
-          id,
-          title,
-          description,
-          created_at,
-          recording_url,
-          analyzed_at,
-          analysis_data,
-          duration,
-          file_size
-        ),
-        surveys:survey_responses(
-          survey_id,
-          response_data,
-          submitted_at,
-          surveys:survey_id(title, description, status)
-        ),
-        insights:ai_insights(
-          id,
-          title,
-          description,
-          severity,
-          action_items,
-          created_at,
-          insight_type
-        )
+        team:teams(name),
+        signals:signals(*),
+        insights:insights(*),
+        meetings:meetings(*),
+        survey_responses:survey_responses(*)
       `)
       .eq('id', memberId)
-      .single();
+      .single()
 
-    if (data) {
-      // Process the data to group surveys and add computed fields
-      const processedData = {
-        ...data,
-        meetings: data.meetings || [],
-        surveys: this.processSurveyData(data.surveys || []),
-        insights: data.insights || [],
-        signals: data.signals || []
-      };
-
-      return { data: processedData, error };
-    }
-
-    return { data, error };
-  },
-
-  processSurveyData(surveyResponses) {
-    // Group survey responses by survey_id and add computed fields
-    const surveyGroups = {};
-
-    surveyResponses.forEach(response => {
-      const surveyId = response.survey_id;
-      if (!surveyGroups[surveyId]) {
-        surveyGroups[surveyId] = {
-          id: surveyId,
-          title: response.surveys?.title || `Survey ${surveyId}`,
-          description: response.surveys?.description || '',
-          status: response.surveys?.status || 'completed',
-          responses: [],
-          completed_at: response.submitted_at,
-          questions_count: 0,
-          satisfaction_score: 0,
-          response_count: 0
-        };
-      }
-
-      surveyGroups[surveyId].responses.push({
-        question: `Question ${surveyGroups[surveyId].responses.length + 1}`,
-        answer: response.response_data
-      });
-    });
-
-    // Calculate computed fields
-    Object.values(surveyGroups).forEach(survey => {
-      survey.questions_count = survey.responses.length;
-      survey.response_count = survey.responses.length;
-
-      // Calculate satisfaction score from responses
-      const scores = survey.responses
-        .map(r => {
-          if (typeof r.answer === 'number') return r.answer;
-          if (typeof r.answer === 'object' && r.answer.rating) return r.answer.rating;
-          return null;
-        })
-        .filter(score => score !== null);
-
-      survey.satisfaction_score = scores.length > 0
-        ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
-        : 'N/A';
-    });
-
-    return Object.values(surveyGroups);
+    return { data, error }
   },
 
   async createMember(memberData) {
     const { data, error } = await supabase
-      .from('team_members')
+      .from('members')
       .insert(memberData)
       .select()
-      .single();
+      .single()
 
-    return { data, error };
+    return { data, error }
   },
 
   async updateMember(memberId, updates) {
     const { data, error } = await supabase
-      .from('team_members')
+      .from('members')
       .update(updates)
       .eq('id', memberId)
       .select()
-      .single();
+      .single()
 
-    return { data, error };
+    return { data, error }
   },
 
   async deleteMember(memberId) {
-    const { error } = await supabase
-      .from('team_members')
+    const { data, error } = await supabase
+      .from('members')
       .delete()
-      .eq('id', memberId);
+      .eq('id', memberId)
 
-    return { error };
+    return { data, error }
   }
 }
 
-// Surveys
+// Survey Management
 export const surveyService = {
   async getSurveys() {
     const { data, error } = await supabase
@@ -358,14 +467,14 @@ export const surveyService = {
   }
 }
 
-// Signals
+// Signal and Insight Management
 export const signalService = {
   async getSignals() {
     const { data, error } = await supabase
       .from('signals')
       .select(`
         *,
-        team_members:team_member_id(name, email, role, department)
+        member:members(name, email, role)
       `)
       .order('created_at', { ascending: false })
 
@@ -383,14 +492,13 @@ export const signalService = {
   }
 }
 
-// Insights
 export const insightService = {
   async getInsights() {
     const { data, error } = await supabase
-      .from('ai_insights')
+      .from('insights')
       .select(`
         *,
-        team_members:team_member_id(name, email)
+        member:members(name, email)
       `)
       .order('created_at', { ascending: false })
 
@@ -399,7 +507,7 @@ export const insightService = {
 
   async createInsight(insightData) {
     const { data, error } = await supabase
-      .from('ai_insights')
+      .from('insights')
       .insert(insightData)
       .select()
       .single()
@@ -408,7 +516,7 @@ export const insightService = {
   }
 }
 
-// Realtime
+// Real-time updates
 export const realtimeService = {
   subscribeToUserSignals(userId, callback) {
     return supabase
@@ -419,7 +527,7 @@ export const realtimeService = {
           event: '*',
           schema: 'public',
           table: 'signals',
-          filter: `team_member_id=eq.${userId}`
+          filter: `user_id=eq.${userId}`
         },
         callback
       )
@@ -427,14 +535,14 @@ export const realtimeService = {
   }
 }
 
-// Meetings
+// Meeting Management
 export const meetingService = {
   async getMeetings() {
     const { data, error } = await supabase
       .from('meetings')
       .select(`
         *,
-        team_members:team_member_id(name, email)
+        member:members(name, email)
       `)
       .order('created_at', { ascending: false })
 

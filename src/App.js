@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AppShell from './components/AppShell';
+import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Teams from './pages/Teams';
@@ -15,14 +16,14 @@ import InvitePage from './pages/InvitePage';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager', 'leader'] }) => {
-  const { isAuthenticated, userRole, loading } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-bg flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <div className="w-8 h-8 border-4 border-mint-dark border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
           </div>
           <p className="text-white">Loading...</p>
         </div>
@@ -30,13 +31,14 @@ const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager'
     );
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
+  const userRole = user?.user_metadata?.role || 'member';
   if (!allowedRoles.includes(userRole)) {
     return (
-      <div className="min-h-screen bg-gradient-bg flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-white text-2xl">⚠️</span>
@@ -53,10 +55,12 @@ const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager'
 
 // Main App Component
 const AppContent = () => {
-  const { isAuthenticated, userRole } = useAuth();
+  const { user } = useAuth();
 
   // Determine default route based on user role
   const getDefaultRoute = () => {
+    if (!user) return '/';
+    const userRole = user?.user_metadata?.role || 'member';
     if (userRole === 'member') {
       return '/app/surveys'; // Members only see surveys
     }
@@ -67,7 +71,8 @@ const AppContent = () => {
     <Router>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Login />} />
+        <Route path="/" element={user ? <Navigate to={getDefaultRoute()} replace /> : <LandingPage />} />
+        <Route path="/login" element={<Login />} /> {/* Remove the redirect logic - let Login component handle it */}
         
         {/* Invitation Route (Public) */}
         <Route path="/invite/:inviteId" element={<InvitePage />} />
@@ -93,25 +98,15 @@ const AppContent = () => {
                     <Billing />
                   </ProtectedRoute>
                 } />
-                <Route path="member/:memberId" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <TeamMember />
-                  </ProtectedRoute>
-                } />
-                <Route path="entry" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <EntryFlow />
-                  </ProtectedRoute>
-                } />
-                <Route path="*" element={<Navigate to={getDefaultRoute()} replace />} />
+                <Route path="member/:memberId" element={<TeamMember />} />
+                <Route path="survey/:surveyId" element={<SurveyPage />} />
+                <Route path="survey/:surveyId/completion" element={<SurveyCompletion />} />
+                <Route path="entry-flow" element={<EntryFlow />} />
+                <Route path="*" element={<Navigate to="dashboard" replace />} />
               </Routes>
             </AppShell>
           </ProtectedRoute>
         } />
-        
-        {/* Survey Taking Routes (Public) */}
-        <Route path="/survey/:surveyId/:userId" element={<SurveyPage />} />
-        <Route path="/survey-completion/:surveyId/:userId" element={<SurveyCompletion />} />
         
         {/* Catch all route */}
         <Route path="*" element={<Navigate to="/" replace />} />
