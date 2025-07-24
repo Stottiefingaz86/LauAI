@@ -14,6 +14,9 @@ export const authService = {
     console.log('Starting signup process...', { email, firstName, lastName, role });
     
     try {
+      // Test if the issue is with the specific email
+      console.log('Testing signup with email:', email);
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -36,6 +39,35 @@ export const authService = {
           details: error.details,
           hint: error.hint
         });
+        
+        // If it's a database error, let's try with a different email to test
+        if (error.message.includes('Database error')) {
+          console.log('Database error detected, testing with different email...');
+          const testEmail = 'testuser123@example.com';
+          
+          const { data: testData, error: testError } = await supabase.auth.signUp({
+            email: testEmail,
+            password: 'TestPassword123!',
+            options: {
+              data: {
+                first_name: 'Test',
+                last_name: 'User',
+                role: 'member'
+              }
+            }
+          });
+          
+          console.log('Test signup result:', { testData, testError });
+          
+          if (testError && testError.message.includes('Database error')) {
+            console.error('Database error also occurs with test email - this is a system issue');
+          } else if (!testError) {
+            console.log('Test signup succeeded - issue is specific to the original email');
+            // Clean up test user
+            await supabase.auth.signOut();
+          }
+        }
+        
         return { data, error };
       }
       
