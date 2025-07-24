@@ -106,43 +106,152 @@ export const teamService = {
 
 // Members
 export const memberService = {
-  async getTeamMembers(teamId) {
+  async getMembers() {
     const { data, error } = await supabase
       .from('team_members')
       .select(`
         *,
-        users (
+        teams:team_id(name),
+        signals:signals(value, created_at),
+        meetings:meetings(id, title, description, created_at, recording_url, analyzed_at, analysis_data),
+        surveys:survey_responses(survey_id, response_data, submitted_at)
+      `)
+      .order('created_at', { ascending: false });
+
+    return { data, error };
+  },
+
+  async getMemberById(memberId) {
+    const { data, error } = await supabase
+      .from('team_members')
+      .select(`
+        *,
+        teams:team_id(name),
+        signals:signals(value, created_at, signal_type, notes),
+        meetings:meetings(
+          id, 
+          title, 
+          description, 
+          created_at, 
+          recording_url, 
+          analyzed_at, 
+          analysis_data,
+          duration,
+          file_size
+        ),
+        surveys:survey_responses(
+          survey_id, 
+          response_data, 
+          submitted_at,
+          surveys:survey_id(title, description, status)
+        ),
+        insights:ai_insights(
           id,
-          email,
-          first_name,
-          last_name,
-          role,
-          avatar_url
+          title,
+          description,
+          severity,
+          action_items,
+          created_at,
+          insight_type
         )
       `)
-      .eq('team_id', teamId)
-    return { data, error }
+      .eq('id', memberId)
+      .single();
+
+    if (data) {
+      // Process the data to group surveys and add computed fields
+      const processedData = {
+        ...data,
+        meetings: data.meetings || [],
+        surveys: this.processSurveyData(data.surveys || []),
+        insights: data.insights || [],
+        signals: data.signals || []
+      };
+
+      return { data: processedData, error };
+    }
+
+    return { data, error };
   },
 
-  async getMemberProfile(userId) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    return { data, error }
+  processSurveyData(surveyResponses) {
+    // Group survey responses by survey_id and add computed fields
+    const surveyGroups = {};
+    
+    surveyResponses.forEach(response => {
+      const surveyId = response.survey_id;
+      if (!surveyGroups[surveyId]) {
+        surveyGroups[surveyId] = {
+          id: surveyId,
+          title: response.surveys?.title || `Survey ${surveyId}`,
+          description: response.surveys?.description || '',
+          status: response.surveys?.status || 'completed',
+          responses: [],
+          completed_at: response.submitted_at,
+          questions_count: 0,
+          satisfaction_score: 0,
+          response_count: 0
+        };
+      }
+      
+      surveyGroups[surveyId].responses.push({
+        question: `Question ${surveyGroups[surveyId].responses.length + 1}`,
+        answer: response.response_data
+      });
+    });
+
+    // Calculate computed fields
+    Object.values(surveyGroups).forEach(survey => {
+      survey.questions_count = survey.responses.length;
+      survey.response_count = survey.responses.length;
+      
+      // Calculate satisfaction score from responses
+      const scores = survey.responses
+        .map(r => {
+          if (typeof r.answer === 'number') return r.answer;
+          if (typeof r.answer === 'object' && r.answer.rating) return r.answer.rating;
+          return null;
+        })
+        .filter(score => score !== null);
+      
+      survey.satisfaction_score = scores.length > 0 
+        ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+        : 'N/A';
+    });
+
+    return Object.values(surveyGroups);
   },
 
-  async updateMemberProfile(userId, updates) {
+  async createMember(memberData) {
     const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', userId)
+      .from('team_members')
+      .insert(memberData)
       .select()
-      .single()
-    return { data, error }
+      .single();
+
+    return { data, error };
+  },
+
+  async updateMember(memberId, updates) {
+    const { data, error } = await supabase
+      .from('team_members')
+      .update(updates)
+      .eq('id', memberId)
+      .select()
+      .single();
+
+    return { data, error };
+  },
+
+  async deleteMember(memberId) {
+    const { error } = await supabase
+      .from('team_members')
+      .delete()
+      .eq('id', memberId);
+
+    return { error };
   }
-}
+};
 
 // Surveys
 export const surveyService = {
