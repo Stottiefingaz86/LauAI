@@ -13,38 +13,54 @@ export const authService = {
   async signUp(email, password, firstName, lastName, role = 'member') {
     console.log('Starting signup process...', { email, firstName, lastName, role });
     
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          first_name: firstName,
-          last_name: lastName,
-          role: role
-        }
-      }
-    });
-    
-    console.log('Supabase signup response:', { data, error });
-    
-    // If signup successful and email confirmation is disabled, auto-sign in
-    if (data?.user && !data.user.email_confirmed_at) {
-      console.log('User created but email not confirmed, attempting auto-signin');
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+    try {
+      const { data, error } = await supabase.auth.signUp({
         email,
-        password
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            role: role
+          }
+        }
       });
       
-      if (signInError) {
-        console.error('Auto-signin failed:', signInError);
-        return { data, error: signInError };
+      console.log('Supabase signup response:', { data, error });
+      
+      if (error) {
+        console.error('Detailed signup error:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+          details: error.details,
+          hint: error.hint
+        });
+        return { data, error };
       }
       
-      console.log('Auto-signin successful:', signInData);
-      return { data: signInData, error: null };
+      // If signup successful and email confirmation is disabled, auto-sign in
+      if (data?.user && !data.user.email_confirmed_at) {
+        console.log('User created but email not confirmed, attempting auto-signin');
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (signInError) {
+          console.error('Auto-signin failed:', signInError);
+          return { data, error: signInError };
+        }
+        
+        console.log('Auto-signin successful:', signInData);
+        return { data: signInData, error: null };
+      }
+      
+      return { data, error };
+    } catch (err) {
+      console.error('Unexpected error in signUp:', err);
+      return { data: null, error: err };
     }
-    
-    return { data, error };
   },
 
   async signIn(email, password) {
