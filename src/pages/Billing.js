@@ -17,12 +17,13 @@ import {
   ChevronRight,
   Star,
   Zap,
-  Shield
+  Shield,
+  Crown
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Billing = () => {
-  const { user, isAdmin, billingInfo, inviteUser, upgradePlan } = useAuth();
+  const { user, isAdmin, isMasterAccount, billingInfo, inviteUser, upgradePlan } = useAuth();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -130,27 +131,45 @@ const Billing = () => {
           <button 
             onClick={() => setShowInviteModal(true)}
             className="btn-secondary flex items-center gap-2"
-            disabled={billingInfo.usedSeats >= billingInfo.totalSeats}
+            disabled={!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats}
           >
             <Plus size={16} />
             Invite User
           </button>
-          <button 
-            onClick={() => setShowUpgradeModal(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <TrendingUp size={16} />
-            Upgrade Plan
-          </button>
+          {!isMasterAccount && (
+            <button 
+              onClick={() => setShowUpgradeModal(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <TrendingUp size={16} />
+              Upgrade Plan
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Master Account Banner */}
+      {isMasterAccount && (
+        <div className="glass-card p-6 mb-6 border-2 border-mint">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-r from-mint to-mint-dark rounded-full flex items-center justify-center">
+              <Crown size={24} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-primary mb-1">Master Account</h3>
+              <p className="text-secondary">You have unlimited access to all features and unlimited seats.</p>
+              <p className="text-sm text-muted mt-1">No billing required - this is your development account.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Current Plan Overview */}
       <div className="glass-card p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-primary">Current Plan</h2>
           <span className="px-3 py-1 bg-mint-accent text-mint-dark rounded-full text-sm font-medium">
-            {billingInfo.plan.charAt(0).toUpperCase() + billingInfo.plan.slice(1)}
+            {isMasterAccount ? 'Master' : billingInfo.plan.charAt(0).toUpperCase() + billingInfo.plan.slice(1)}
           </span>
         </div>
         
@@ -159,7 +178,9 @@ const Billing = () => {
             <div className="w-12 h-12 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-2">
               <Users size={24} className="text-mint-dark" />
             </div>
-            <p className="text-2xl font-bold text-primary">{billingInfo.usedSeats}/{billingInfo.totalSeats}</p>
+            <p className="text-2xl font-bold text-primary">
+              {isMasterAccount ? '∞' : `${billingInfo.usedSeats}/${billingInfo.totalSeats}`}
+            </p>
             <p className="text-sm text-secondary">Seats Used</p>
           </div>
           
@@ -167,7 +188,9 @@ const Billing = () => {
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-2">
               <Euro size={24} className="text-blue-600" />
             </div>
-            <p className="text-2xl font-bold text-primary">€{billingInfo.monthlyCost}</p>
+            <p className="text-2xl font-bold text-primary">
+              {isMasterAccount ? 'Free' : `€${billingInfo.monthlyCost}`}
+            </p>
             <p className="text-sm text-secondary">Monthly Cost</p>
           </div>
           
@@ -176,7 +199,7 @@ const Billing = () => {
               <Calendar size={24} className="text-green-600" />
             </div>
             <p className="text-lg font-bold text-primary">
-              {billingInfo.nextBillingDate ? new Date(billingInfo.nextBillingDate).toLocaleDateString() : 'N/A'}
+              {isMasterAccount ? 'Lifetime' : (billingInfo.nextBillingDate ? new Date(billingInfo.nextBillingDate).toLocaleDateString() : 'N/A')}
             </p>
             <p className="text-sm text-secondary">Next Billing</p>
           </div>
@@ -186,139 +209,141 @@ const Billing = () => {
               <Shield size={24} className="text-purple-600" />
             </div>
             <p className="text-lg font-bold text-primary">
-              {billingInfo.totalSeats - billingInfo.usedSeats}
+              {isMasterAccount ? '∞' : billingInfo.totalSeats - billingInfo.usedSeats}
             </p>
             <p className="text-sm text-secondary">Available Seats</p>
           </div>
         </div>
       </div>
 
-      {/* Pricing Tiers */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="glass-card p-6">
-          <div className="text-center mb-4">
-            <div className="w-16 h-16 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-3">
-              <Star size={32} className="text-mint-dark" />
+      {/* Pricing Tiers - Hide for master account */}
+      {!isMasterAccount && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="glass-card p-6">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-3">
+                <Star size={32} className="text-mint-dark" />
+              </div>
+              <h3 className="text-lg font-semibold text-primary">Basic Plan</h3>
+              <p className="text-secondary text-sm">Perfect for small teams</p>
             </div>
-            <h3 className="text-lg font-semibold text-primary">Basic Plan</h3>
-            <p className="text-secondary text-sm">Perfect for small teams</p>
+            
+            <div className="text-center mb-4">
+              <p className="text-3xl font-bold text-primary">€20</p>
+              <p className="text-sm text-secondary">per month</p>
+            </div>
+            
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>1 Admin seat included</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Full dashboard access</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Team management</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Survey creation</span>
+              </li>
+            </ul>
+            
+            <div className="text-center">
+              <p className="text-sm text-secondary mb-2">Additional seats: €9.99/month each</p>
+              <button 
+                onClick={() => setShowUpgradeModal(true)}
+                className="btn-primary w-full"
+              >
+                Add Seats
+              </button>
+            </div>
           </div>
-          
-          <div className="text-center mb-4">
-            <p className="text-3xl font-bold text-primary">€20</p>
-            <p className="text-sm text-secondary">per month</p>
-          </div>
-          
-          <ul className="space-y-2 mb-6">
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>1 Admin seat included</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Full dashboard access</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Team management</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Survey creation</span>
-            </li>
-          </ul>
-          
-          <div className="text-center">
-            <p className="text-sm text-secondary mb-2">Additional seats: €9.99/month each</p>
-            <button 
-              onClick={() => setShowUpgradeModal(true)}
-              className="btn-primary w-full"
-            >
-              Add Seats
-            </button>
-          </div>
-        </div>
 
-        <div className="glass-card p-6 border-2 border-mint">
-          <div className="text-center mb-4">
-            <div className="w-16 h-16 bg-mint rounded-full flex items-center justify-center mx-auto mb-3">
-              <Zap size={32} className="text-white" />
+          <div className="glass-card p-6 border-2 border-mint">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-mint rounded-full flex items-center justify-center mx-auto mb-3">
+                <Zap size={32} className="text-white" />
+              </div>
+              <h3 className="text-lg font-semibold text-primary">Pro Plan</h3>
+              <p className="text-secondary text-sm">For growing organizations</p>
             </div>
-            <h3 className="text-lg font-semibold text-primary">Pro Plan</h3>
-            <p className="text-secondary text-sm">For growing organizations</p>
+            
+            <div className="text-center mb-4">
+              <p className="text-3xl font-bold text-primary">€50</p>
+              <p className="text-sm text-secondary">per month</p>
+            </div>
+            
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>5 seats included</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Advanced analytics</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Priority support</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Custom integrations</span>
+              </li>
+            </ul>
+            
+            <div className="text-center">
+              <button className="btn-secondary w-full opacity-50 cursor-not-allowed">
+                Coming Soon
+              </button>
+            </div>
           </div>
-          
-          <div className="text-center mb-4">
-            <p className="text-3xl font-bold text-primary">€50</p>
-            <p className="text-sm text-secondary">per month</p>
-          </div>
-          
-          <ul className="space-y-2 mb-6">
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>5 seats included</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Advanced analytics</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Priority support</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Custom integrations</span>
-            </li>
-          </ul>
-          
-          <div className="text-center">
-            <button className="btn-secondary w-full opacity-50 cursor-not-allowed">
-              Coming Soon
-            </button>
-          </div>
-        </div>
 
-        <div className="glass-card p-6">
-          <div className="text-center mb-4">
-            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Shield size={32} className="text-purple-600" />
+          <div className="glass-card p-6">
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Shield size={32} className="text-purple-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-primary">Enterprise</h3>
+              <p className="text-secondary text-sm">For large organizations</p>
             </div>
-            <h3 className="text-lg font-semibold text-primary">Enterprise</h3>
-            <p className="text-secondary text-sm">For large organizations</p>
-          </div>
-          
-          <div className="text-center mb-4">
-            <p className="text-3xl font-bold text-primary">Custom</p>
-            <p className="text-sm text-secondary">pricing</p>
-          </div>
-          
-          <ul className="space-y-2 mb-6">
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Unlimited seats</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Dedicated support</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>Custom features</span>
-            </li>
-            <li className="flex items-center gap-2 text-sm">
-              <CheckCircle size={16} className="text-green-500" />
-              <span>SLA guarantee</span>
-            </li>
-          </ul>
-          
-          <div className="text-center">
-            <button className="btn-secondary w-full opacity-50 cursor-not-allowed">
-              Contact Sales
-            </button>
+            
+            <div className="text-center mb-4">
+              <p className="text-3xl font-bold text-primary">Custom</p>
+              <p className="text-sm text-secondary">pricing</p>
+            </div>
+            
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Unlimited seats</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Dedicated support</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>Custom features</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <CheckCircle size={16} className="text-green-500" />
+                <span>SLA guarantee</span>
+              </li>
+            </ul>
+            
+            <div className="text-center">
+              <button className="btn-secondary w-full opacity-50 cursor-not-allowed">
+                Contact Sales
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Invitation System */}
       <div className="glass-card p-6 mb-6">
@@ -353,15 +378,17 @@ const Billing = () => {
             <button
               onClick={() => setShowInviteModal(true)}
               className="btn-primary w-full flex items-center justify-center gap-2"
-              disabled={billingInfo.usedSeats >= billingInfo.totalSeats}
+              disabled={!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats}
             >
               <Mail size={16} />
               Send Email Invitation
             </button>
             <p className="text-xs text-secondary mt-2">
-              {billingInfo.usedSeats >= billingInfo.totalSeats 
-                ? 'No available seats. Upgrade your plan to invite more users.'
-                : `${billingInfo.totalSeats - billingInfo.usedSeats} seats available`
+              {isMasterAccount 
+                ? 'Unlimited invitations available'
+                : billingInfo.usedSeats >= billingInfo.totalSeats 
+                  ? 'No available seats. Upgrade your plan to invite more users.'
+                  : `${billingInfo.totalSeats - billingInfo.usedSeats} seats available`
               }
             </p>
           </div>
@@ -427,8 +454,11 @@ const Billing = () => {
               <div className="bg-mint-bg p-3 rounded-lg">
                 <p className="text-sm text-primary font-medium mb-1">Current Usage</p>
                 <p className="text-xs text-secondary">
-                  {billingInfo.usedSeats} of {billingInfo.totalSeats} seats used
-                  {billingInfo.usedSeats >= billingInfo.totalSeats && (
+                  {isMasterAccount 
+                    ? 'Unlimited seats available'
+                    : `${billingInfo.usedSeats} of ${billingInfo.totalSeats} seats used`
+                  }
+                  {!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats && (
                     <span className="text-red-500 block mt-1">
                       ⚠️ No available seats. Please upgrade your plan.
                     </span>
@@ -447,8 +477,8 @@ const Billing = () => {
               </button>
               <button
                 onClick={handleInviteUser}
-                className="btn-primary flex-1 flex items-center justify-center gap-2"
-                disabled={sendingInvite || !inviteEmail.trim() || billingInfo.usedSeats >= billingInfo.totalSeats}
+                className="btn-primary flex items-center justify-center gap-2 flex-1"
+                disabled={sendingInvite || !inviteEmail.trim() || (!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats)}
               >
                 {sendingInvite ? (
                   <>
@@ -467,8 +497,8 @@ const Billing = () => {
         </div>
       )}
 
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
+      {/* Upgrade Modal - Only show for non-master accounts */}
+      {showUpgradeModal && !isMasterAccount && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="glass-modal w-full max-w-md p-6">
             <h3 className="text-lg font-semibold text-primary mb-4">Add Seats</h3>
@@ -518,7 +548,7 @@ const Billing = () => {
               </button>
               <button
                 onClick={handleUpgradePlan}
-                className="btn-primary flex-1 flex items-center justify-center gap-2"
+                className="btn-primary flex items-center justify-center gap-2 flex-1"
                 disabled={upgrading}
               >
                 {upgrading ? (

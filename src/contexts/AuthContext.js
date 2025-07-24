@@ -17,13 +17,15 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null)
   const [userRole, setUserRole] = useState(null)
   const [billingInfo, setBillingInfo] = useState({
-    plan: 'basic',
+    plan: 'trial',
     seats: 1,
     usedSeats: 0,
     totalSeats: 1,
-    monthlyCost: 20,
+    monthlyCost: 0,
     nextBillingDate: null,
-    inviteLink: null
+    inviteLink: null,
+    trialDaysLeft: 14,
+    isTrial: true
   })
 
   useEffect(() => {
@@ -71,13 +73,15 @@ export const AuthProvider = ({ children }) => {
         } else {
           setUserRole(null)
           setBillingInfo({
-            plan: 'basic',
+            plan: 'trial',
             seats: 1,
             usedSeats: 0,
             totalSeats: 1,
-            monthlyCost: 20,
+            monthlyCost: 0,
             nextBillingDate: null,
-            inviteLink: null
+            inviteLink: null,
+            trialDaysLeft: 14,
+            isTrial: true
           })
         }
         
@@ -90,18 +94,39 @@ export const AuthProvider = ({ children }) => {
 
   const loadBillingInfo = async (userId) => {
     try {
-      // This would typically fetch from your billing service
-      // For now, we'll simulate the billing data
-      const billingData = {
-        plan: 'basic',
-        seats: 1,
-        usedSeats: 1, // Current admin
-        totalSeats: 1,
-        monthlyCost: 20,
-        nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-        inviteLink: `${window.location.origin}/invite/${userId}`
+      // Check if this is the master account
+      const isMasterAccount = user?.email === 'christopher.hunt86@gmail.com'
+      
+      if (isMasterAccount) {
+        // Master account gets unlimited access
+        const masterBillingData = {
+          plan: 'master',
+          seats: 999,
+          usedSeats: 1, // Current admin
+          totalSeats: 999,
+          monthlyCost: 0,
+          nextBillingDate: null,
+          inviteLink: `${window.location.origin}/invite/${userId}`,
+          trialDaysLeft: null,
+          isTrial: false
+        }
+        setBillingInfo(masterBillingData)
+      } else {
+        // This would typically fetch from your billing service
+        // For now, we'll simulate the billing data
+        const billingData = {
+          plan: 'basic',
+          seats: 1,
+          usedSeats: 1, // Current admin
+          totalSeats: 1,
+          monthlyCost: 20,
+          nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+          inviteLink: `${window.location.origin}/invite/${userId}`,
+          trialDaysLeft: 14,
+          isTrial: true
+        }
+        setBillingInfo(billingData)
       }
-      setBillingInfo(billingData)
     } catch (error) {
       console.error('Error loading billing info:', error)
     }
@@ -109,8 +134,18 @@ export const AuthProvider = ({ children }) => {
 
   const signUp = async (email, password, firstName, lastName, role = 'member') => {
     try {
-      const { data, error } = await authService.signUp(email, password, firstName, lastName, role)
+      // Check if this is the master account
+      const isMasterAccount = email === 'christopher.hunt86@gmail.com'
+      
+      // For master account, always set role to admin and give free access
+      const finalRole = isMasterAccount ? 'admin' : role
+      
+      const { data, error } = await authService.signUp(email, password, firstName, lastName, finalRole)
       if (error) throw error
+      
+      // If signup successful, the user will be automatically signed in
+      // and the auth state change listener will handle the rest
+      
       return { data, error: null }
     } catch (error) {
       return { data: null, error }
@@ -139,8 +174,9 @@ export const AuthProvider = ({ children }) => {
 
   const inviteUser = async (email, role = 'member') => {
     try {
-      // Check if we have available seats
-      if (billingInfo.usedSeats >= billingInfo.totalSeats) {
+      // Check if we have available seats (skip for master account)
+      const isMasterAccount = user?.email === 'christopher.hunt86@gmail.com'
+      if (!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats) {
         throw new Error('No available seats. Please upgrade your plan.')
       }
 
@@ -148,11 +184,13 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await authService.inviteUser(email, role, user.id)
       if (error) throw error
 
-      // Update billing info
-      setBillingInfo(prev => ({
-        ...prev,
-        usedSeats: prev.usedSeats + 1
-      }))
+      // Update billing info (skip for master account)
+      if (!isMasterAccount) {
+        setBillingInfo(prev => ({
+          ...prev,
+          usedSeats: prev.usedSeats + 1
+        }))
+      }
 
       return { data, error: null }
     } catch (error) {
@@ -170,7 +208,10 @@ export const AuthProvider = ({ children }) => {
       const updatedBilling = {
         ...billingInfo,
         totalSeats: newTotalSeats,
-        monthlyCost: newMonthlyCost
+        monthlyCost: newMonthlyCost,
+        plan: 'basic', // Upgrade from trial to basic
+        isTrial: false,
+        trialDaysLeft: null
       }
 
       setBillingInfo(updatedBilling)
@@ -184,6 +225,7 @@ export const AuthProvider = ({ children }) => {
   const isMember = userRole === 'member'
   const isManager = userRole === 'manager'
   const isLeader = userRole === 'leader'
+  const isMasterAccount = user?.email === 'christopher.hunt86@gmail.com'
 
   const value = {
     user,
@@ -194,6 +236,7 @@ export const AuthProvider = ({ children }) => {
     isMember,
     isManager,
     isLeader,
+    isMasterAccount,
     billingInfo,
     signUp,
     signIn,

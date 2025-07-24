@@ -11,13 +11,17 @@ import {
   User,
   Bell,
   Search,
-  CreditCard
+  CreditCard,
+  Crown,
+  Shield,
+  Star,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import Dock from './Dock';
 
 const AppShell = ({ children }) => {
-  const { user, signOut, isAdmin, isMember, isManager, isLeader } = useAuth();
+  const { user, signOut, isAdmin, isMember, isManager, isLeader, isMasterAccount, billingInfo } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dockVisible, setDockVisible] = useState(true);
   const location = useLocation();
@@ -123,6 +127,83 @@ const AppShell = ({ children }) => {
     return 'User';
   };
 
+  const getRoleBadge = () => {
+    if (isMasterAccount) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-mint to-mint-dark rounded-full text-xs font-medium text-white">
+          <Crown size={10} />
+          <span>Master</span>
+        </div>
+      );
+    } else if (isAdmin) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-400 rounded-full text-xs font-medium">
+          <Shield size={10} />
+          <span>Admin</span>
+        </div>
+      );
+    } else if (isManager) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium">
+          <Star size={10} />
+          <span>Manager</span>
+        </div>
+      );
+    } else if (isLeader) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-medium">
+          <Star size={10} />
+          <span>Leader</span>
+        </div>
+      );
+    } else {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-gray-500/20 text-gray-400 rounded-full text-xs font-medium">
+          <User size={10} />
+          <span>Member</span>
+        </div>
+      );
+    }
+  };
+
+  const getPlanStatus = () => {
+    if (isMasterAccount) {
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-mint to-mint-dark rounded-full text-xs font-medium text-white">
+          <Crown size={10} />
+          <span>Master Plan</span>
+        </div>
+      );
+    }
+
+    // For regular users, show plan status
+    const plan = billingInfo.plan || 'basic';
+    const isTrial = plan === 'trial';
+    
+    if (isTrial) {
+      const daysLeft = billingInfo.trialDaysLeft || 14;
+      return (
+        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs font-medium">
+          <Clock size={10} />
+          <span>Trial - {daysLeft} days left</span>
+        </div>
+      );
+    } else {
+      const planColors = {
+        basic: 'bg-blue-500/20 text-blue-400',
+        pro: 'bg-purple-500/20 text-purple-400',
+        enterprise: 'bg-green-500/20 text-green-400'
+      };
+      
+      return (
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${planColors[plan] || planColors.basic}`}>
+          <Star size={10} />
+          <span className="capitalize">{plan} Plan</span>
+        </div>
+      );
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-bg">
       {/* Mobile sidebar overlay */}
@@ -182,7 +263,7 @@ const AppShell = ({ children }) => {
 
           {/* User section */}
           <div className="p-4 border-t border-white/10">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 bg-mint-accent rounded-full flex items-center justify-center">
                 <span className="text-mint-dark font-semibold">
                   {user?.email?.charAt(0).toUpperCase() || 'U'}
@@ -192,9 +273,10 @@ const AppShell = ({ children }) => {
                 <p className="text-sm font-medium text-white truncate">
                   {user?.email || 'User'}
                 </p>
-                <p className="text-xs text-white/60">
-                  {getRoleDisplayName()}
-                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  {getRoleBadge()}
+                  {getPlanStatus()}
+                </div>
               </div>
             </div>
             
@@ -250,9 +332,10 @@ const AppShell = ({ children }) => {
                   <p className="text-sm font-medium text-white">
                     {user?.email || 'User'}
                   </p>
-                  <p className="text-xs text-white/60">
-                    {getRoleDisplayName()}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {getRoleBadge()}
+                    {getPlanStatus()}
+                  </div>
                 </div>
               </div>
             </div>
