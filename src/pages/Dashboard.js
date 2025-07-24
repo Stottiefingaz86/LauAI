@@ -20,7 +20,7 @@ import { signalService, insightService, realtimeService } from '../lib/supabaseS
 import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isManager, isLeader, isMember } = useAuth();
   const [dashboardData, setDashboardData] = useState({
     signals: [],
     insights: [],
@@ -90,8 +90,8 @@ const Dashboard = () => {
 
   const hasData = dashboardData.signals.length > 0 || dashboardData.insights.length > 0;
 
-  // Access control - only admins can see dashboard
-  if (!isAdmin) {
+  // Access control - only admins, managers, and leaders can see dashboard
+  if (isMember) {
     return (
       <div className="p-6">
         <div className="text-center py-12">
@@ -100,7 +100,7 @@ const Dashboard = () => {
           </div>
           <h1 className="text-2xl font-bold text-primary mb-2">Access Denied</h1>
           <p className="text-secondary text-lg">You don't have permission to view the dashboard.</p>
-          <p className="text-muted text-sm mt-2">Only administrators can access team performance data.</p>
+          <p className="text-muted text-sm mt-2">Team members can only access surveys assigned to them.</p>
         </div>
       </div>
     );
@@ -126,8 +126,8 @@ const Dashboard = () => {
     );
   }
 
-  // Empty state for new users
-  if (!hasData) {
+  // Empty state for new users (only show for admins)
+  if (!hasData && isAdmin) {
     return (
       <div className="p-6">
         {/* Welcome Header */}
@@ -298,6 +298,22 @@ const Dashboard = () => {
     );
   }
 
+  // For managers and leaders, show a simplified dashboard
+  if (!hasData && (isManager || isLeader)) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12">
+          <div className="w-20 h-20 bg-gradient-to-r from-mint to-mint-dark rounded-full flex items-center justify-center mx-auto mb-4">
+            <BarChart3 size={32} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-primary mb-2">No Data Available</h1>
+          <p className="text-secondary text-lg">Your team hasn't generated any performance data yet.</p>
+          <p className="text-muted text-sm mt-2">Once team members complete surveys and meetings are uploaded, you'll see insights here.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -307,21 +323,23 @@ const Dashboard = () => {
           <p className="text-secondary">Team performance overview and insights</p>
         </div>
         
-        {/* Department Filter */}
-        <div className="flex items-center gap-3">
-          <select 
-            value={selectedDepartment} 
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="glass-select"
-          >
-            <option value="all">All Departments</option>
-            <option value="engineering">Engineering</option>
-            <option value="design">Design</option>
-            <option value="product">Product</option>
-            <option value="marketing">Marketing</option>
-            <option value="sales">Sales</option>
-          </select>
-        </div>
+        {/* Department Filter - Only show for admins */}
+        {isAdmin && (
+          <div className="flex items-center gap-3">
+            <select 
+              value={selectedDepartment} 
+              onChange={(e) => setSelectedDepartment(e.target.value)}
+              className="glass-select"
+            >
+              <option value="all">All Departments</option>
+              <option value="engineering">Engineering</option>
+              <option value="design">Design</option>
+              <option value="product">Product</option>
+              <option value="marketing">Marketing</option>
+              <option value="sales">Sales</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -535,92 +553,94 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* AI Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-primary flex items-center gap-2">
-              <Target size={20} />
-              Top Issues & Recommendations
-            </h3>
-            <button
-              onClick={() => setShowIssuesModal(true)}
-              className="text-sm text-mint hover:text-mint-dark transition-colors"
-            >
-              View All →
-            </button>
-          </div>
-          <div className="space-y-3">
-            {dashboardData.topIssues.length > 0 ? (
-              dashboardData.topIssues.slice(0, 3).map((insight, index) => (
-                <div 
-                  key={index} 
-                  className="p-3 bg-red-50 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
-                  onClick={() => setSelectedInsight(insight)}
-                >
-                  <p className="text-sm font-medium text-primary">{insight.title}</p>
-                  <p className="text-xs text-secondary mt-1">{insight.description}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-red-600 font-medium">High Priority</span>
-                    <span className="text-xs text-muted">•</span>
-                    <span className="text-xs text-muted">{new Date(insight.created_at).toLocaleDateString()}</span>
+      {/* AI Insights - Only show for admins and managers */}
+      {(isAdmin || isManager) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-primary flex items-center gap-2">
+                <Target size={20} />
+                Top Issues & Recommendations
+              </h3>
+              <button
+                onClick={() => setShowIssuesModal(true)}
+                className="text-sm text-mint hover:text-mint-dark transition-colors"
+              >
+                View All →
+              </button>
+            </div>
+            <div className="space-y-3">
+              {dashboardData.topIssues.length > 0 ? (
+                dashboardData.topIssues.slice(0, 3).map((insight, index) => (
+                  <div 
+                    key={index} 
+                    className="p-3 bg-red-50 rounded-lg cursor-pointer hover:bg-red-100 transition-colors"
+                    onClick={() => setSelectedInsight(insight)}
+                  >
+                    <p className="text-sm font-medium text-primary">{insight.title}</p>
+                    <p className="text-xs text-secondary mt-1">{insight.description}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs text-red-600 font-medium">High Priority</span>
+                      <span className="text-xs text-muted">•</span>
+                      <span className="text-xs text-muted">{new Date(insight.created_at).toLocaleDateString()}</span>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle size={24} className="text-green-600" />
+                  </div>
+                  <p className="text-secondary text-sm">No critical issues detected</p>
+                  <p className="text-muted text-xs">Your team is performing well!</p>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle size={24} className="text-green-600" />
-                </div>
-                <p className="text-secondary text-sm">No critical issues detected</p>
-                <p className="text-muted text-xs">Your team is performing well!</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-primary flex items-center gap-2">
-              <Award size={20} />
-              AI Recommendations
-            </h3>
-            <button
-              onClick={() => setShowRecommendationsModal(true)}
-              className="text-sm text-mint hover:text-mint-dark transition-colors"
-            >
-              View All →
-            </button>
-          </div>
-          <div className="space-y-3">
-            {dashboardData.recommendations.length > 0 ? (
-              dashboardData.recommendations.slice(0, 3).map((rec, index) => (
-                <div 
-                  key={index} 
-                  className="p-3 bg-mint-bg rounded-lg cursor-pointer hover:bg-mint-accent transition-colors"
-                  onClick={() => setSelectedInsight(rec)}
-                >
-                  <p className="text-sm font-medium text-primary">{rec.title}</p>
-                  <p className="text-xs text-secondary mt-1">{rec.description}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs text-mint-dark font-medium">Actionable</span>
-                    <span className="text-xs text-muted">•</span>
-                    <span className="text-xs text-muted">{new Date(rec.created_at).toLocaleDateString()}</span>
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-primary flex items-center gap-2">
+                <Award size={20} />
+                AI Recommendations
+              </h3>
+              <button
+                onClick={() => setShowRecommendationsModal(true)}
+                className="text-sm text-mint hover:text-mint-dark transition-colors"
+              >
+                View All →
+              </button>
+            </div>
+            <div className="space-y-3">
+              {dashboardData.recommendations.length > 0 ? (
+                dashboardData.recommendations.slice(0, 3).map((rec, index) => (
+                  <div 
+                    key={index} 
+                    className="p-3 bg-mint-bg rounded-lg cursor-pointer hover:bg-mint-accent transition-colors"
+                    onClick={() => setSelectedInsight(rec)}
+                  >
+                    <p className="text-sm font-medium text-primary">{rec.title}</p>
+                    <p className="text-xs text-secondary mt-1">{rec.description}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs text-mint-dark font-medium">Actionable</span>
+                      <span className="text-xs text-muted">•</span>
+                      <span className="text-xs text-muted">{new Date(rec.created_at).toLocaleDateString()}</span>
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Lightbulb size={24} className="text-blue-600" />
+                  </div>
+                  <p className="text-secondary text-sm">No recommendations yet</p>
+                  <p className="text-muted text-xs">AI will suggest actions as data grows</p>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Lightbulb size={24} className="text-blue-600" />
-                </div>
-                <p className="text-secondary text-sm">No recommendations yet</p>
-                <p className="text-muted text-xs">AI will suggest actions as data grows</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Modals */}
       {selectedInsight && (

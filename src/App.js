@@ -9,6 +9,7 @@ import Surveys from './pages/Surveys';
 import Billing from './pages/Billing';
 import TeamMember from './pages/TeamMember';
 import SurveyPage from './pages/SurveyPage';
+import SurveyCompletion from './pages/SurveyCompletion';
 import EntryFlow from './pages/EntryFlow';
 import InvitePage from './pages/InvitePage';
 
@@ -54,11 +55,19 @@ const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager'
 const AppContent = () => {
   const { isAuthenticated, userRole } = useAuth();
 
+  // Determine default route based on user role
+  const getDefaultRoute = () => {
+    if (userRole === 'member') {
+      return '/app/surveys'; // Members only see surveys
+    }
+    return '/app/dashboard'; // Admins, managers, leaders see dashboard
+  };
+
   return (
     <Router>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={isAuthenticated ? <Navigate to="/app/dashboard" replace /> : <Login />} />
+        <Route path="/" element={isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Login />} />
         
         {/* Invitation Route (Public) */}
         <Route path="/invite/:inviteId" element={<InvitePage />} />
@@ -69,7 +78,7 @@ const AppContent = () => {
             <AppShell>
               <Routes>
                 <Route path="dashboard" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
+                  <ProtectedRoute allowedRoles={['admin', 'manager', 'leader']}>
                     <Dashboard />
                   </ProtectedRoute>
                 } />
@@ -94,14 +103,15 @@ const AppContent = () => {
                     <EntryFlow />
                   </ProtectedRoute>
                 } />
-                <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+                <Route path="*" element={<Navigate to={getDefaultRoute()} replace />} />
               </Routes>
             </AppShell>
           </ProtectedRoute>
         } />
         
-        {/* Survey Taking Route (Public) */}
+        {/* Survey Taking Routes (Public) */}
         <Route path="/survey/:surveyId/:userId" element={<SurveyPage />} />
+        <Route path="/survey-completion/:surveyId/:userId" element={<SurveyCompletion />} />
         
         {/* Catch all route */}
         <Route path="*" element={<Navigate to="/" replace />} />

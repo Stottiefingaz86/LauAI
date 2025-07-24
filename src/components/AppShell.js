@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Dock from './Dock';
 
 const AppShell = ({ children }) => {
-  const { user, signOut, isAdmin, isMember } = useAuth();
+  const { user, signOut, isAdmin, isMember, isManager, isLeader } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dockVisible, setDockVisible] = useState(true);
   const location = useLocation();
@@ -31,6 +31,18 @@ const AppShell = ({ children }) => {
         { name: 'Teams', icon: Users, path: '/app/teams' },
         { name: 'Surveys', icon: BarChart3, path: '/app/surveys' },
         { name: 'Billing', icon: CreditCard, path: '/app/billing' },
+        { name: 'Settings', icon: Settings, path: '/app/settings' }
+      ];
+    } else if (isManager) {
+      return [
+        { name: 'Dashboard', icon: Home, path: '/app/dashboard' },
+        { name: 'Surveys', icon: BarChart3, path: '/app/surveys' },
+        { name: 'Settings', icon: Settings, path: '/app/settings' }
+      ];
+    } else if (isLeader) {
+      return [
+        { name: 'Dashboard', icon: Home, path: '/app/dashboard' },
+        { name: 'Surveys', icon: BarChart3, path: '/app/surveys' },
         { name: 'Settings', icon: Settings, path: '/app/settings' }
       ];
     } else if (isMember) {
@@ -103,6 +115,14 @@ const AppShell = ({ children }) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const getRoleDisplayName = () => {
+    if (isAdmin) return 'Administrator';
+    if (isManager) return 'Manager';
+    if (isLeader) return 'Team Leader';
+    if (isMember) return 'Team Member';
+    return 'User';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-bg">
       {/* Mobile sidebar overlay */}
@@ -172,8 +192,8 @@ const AppShell = ({ children }) => {
                 <p className="text-sm font-medium text-white truncate">
                   {user?.email || 'User'}
                 </p>
-                <p className="text-xs text-white/60 capitalize">
-                  {isAdmin ? 'Administrator' : 'Team Member'}
+                <p className="text-xs text-white/60">
+                  {getRoleDisplayName()}
                 </p>
               </div>
             </div>
@@ -230,8 +250,8 @@ const AppShell = ({ children }) => {
                   <p className="text-sm font-medium text-white">
                     {user?.email || 'User'}
                   </p>
-                  <p className="text-xs text-white/60 capitalize">
-                    {isAdmin ? 'Administrator' : 'Team Member'}
+                  <p className="text-xs text-white/60">
+                    {getRoleDisplayName()}
                   </p>
                 </div>
               </div>
