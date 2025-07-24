@@ -85,13 +85,15 @@ serve(async (req) => {
     }
 
     // Update meeting record with analysis
-    const { error: meetingError } = await supabase
+    const { data: meetingData, error: meetingError } = await supabase
       .from('meetings')
       .update({
         analyzed_at: new Date().toISOString(),
         analysis_data: analysis
       })
       .eq('id', meeting_id)
+      .select()
+      .single()
 
     if (meetingError) {
       console.error('Error updating meeting:', meetingError)
@@ -115,6 +117,24 @@ serve(async (req) => {
       console.error('Error adding signal:', signalError)
     }
 
+    // Send email notification if meeting data is available
+    if (meetingData) {
+      try {
+        // Get user email
+        const { data: userData } = await supabase
+          .from('users')
+          .select('email')
+          .eq('id', user_id)
+          .single()
+
+        if (userData?.email) {
+          await sendMeetingAnalysisEmail(userData.email, meetingData, analysis)
+        }
+      } catch (emailError) {
+        console.error('Error sending email notification:', emailError)
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -132,6 +152,81 @@ serve(async (req) => {
     )
   }
 })
+
+async function sendMeetingAnalysisEmail(recipientEmail: string, meetingData: any, analysis: any) {
+  const resendApiKey = Deno.env.get('RESEND_API_KEY')
+  if (!resendApiKey) {
+    console.error('Resend API key not configured')
+    return
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'LauAI <noreply@lauai.com>',
+        to: [recipientEmail],
+        subject: `Meeting Analysis Complete: ${meetingData.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); padding: 30px; border-radius: 12px; text-align: center; color: white;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: bold;">Meeting Analysis</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">AI-powered insights ready</p>
+            </div>
+            
+            <div style="padding: 30px; background: #f8f9fa; border-radius: 0 0 12px 12px;">
+              <h2 style="color: #1f2937; margin-bottom: 20px;">Your 1:1 meeting has been analyzed</h2>
+              
+              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #1f2937; margin: 0 0 10px 0;">${meetingData.title}</h3>
+                <p style="color: #6b7280; margin: 0;">${meetingData.description || '1:1 Meeting Analysis'}</p>
+              </div>
+              
+              <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+                <h4 style="color: #1e40af; margin: 0 0 10px 0;">AI Analysis Summary</h4>
+                <p style="color: #1e40af; margin: 0; font-size: 14px;">${analysis.summary}</p>
+              </div>
+              
+              <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+                <h4 style="color: #92400e; margin: 0 0 10px 0;">Action Items</h4>
+                <ul style="color: #92400e; margin: 0; padding-left: 20px;">
+                  ${analysis.action_items?.map((item: string) => `<li>${item}</li>`).join('') || '<li>No specific action items identified</li>'}
+                </ul>
+              </div>
+              
+              <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+                <h4 style="color: #166534; margin: 0 0 10px 0;">Recommendations</h4>
+                <ul style="color: #166534; margin: 0; padding-left: 20px;">
+                  ${analysis.recommendations?.map((rec: string) => `<li>${rec}</li>`).join('') || '<li>Continue current practices</li>'}
+                </ul>
+              </div>
+              
+              <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+                View detailed insights and performance signals in your LauAI dashboard.
+              </p>
+            </div>
+            
+            <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+              <p>© 2024 LauAI. All rights reserved.</p>
+            </div>
+          </div>
+        `
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Resend API error: ${response.statusText}`);
+    }
+
+    console.log('Meeting analysis email sent successfully');
+  } catch (error) {
+    console.error('Error sending meeting analysis email:', error);
+  }
+}
 
 async function analyzeMeetingWithAI(recordingUrl: string, apiKey: string) {
   try {

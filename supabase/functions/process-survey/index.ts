@@ -109,16 +109,36 @@ serve(async (req) => {
     }
 
     // Update survey completion status
-    const { error: surveyError } = await supabase
+    const { data: surveyData, error: surveyError } = await supabase
       .from('surveys')
       .update({
         status: 'completed',
         updated_at: new Date().toISOString()
       })
       .eq('id', survey_id)
+      .select()
+      .single()
 
     if (surveyError) {
       console.error('Error updating survey status:', surveyError)
+    }
+
+    // Send email notification if survey data is available
+    if (surveyData) {
+      try {
+        // Get user email
+        const { data: userData } = await supabase
+          .from('users')
+          .select('email')
+          .eq('id', user_id)
+          .single()
+
+        if (userData?.email) {
+          await sendSurveyCompletionEmail(userData.email, surveyData, analysis)
+        }
+      } catch (emailError) {
+        console.error('Error sending email notification:', emailError)
+      }
     }
 
     return new Response(
@@ -139,6 +159,74 @@ serve(async (req) => {
     )
   }
 })
+
+async function sendSurveyCompletionEmail(recipientEmail: string, surveyData: any, analysis: any) {
+  const resendApiKey = Deno.env.get('RESEND_API_KEY')
+  if (!resendApiKey) {
+    console.error('Resend API key not configured')
+    return
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'LauAI <noreply@lauai.com>',
+        to: [recipientEmail],
+        subject: `Survey Completed: ${surveyData.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); padding: 30px; border-radius: 12px; text-align: center; color: white;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: bold;">Survey Completed</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank you for your feedback!</p>
+            </div>
+            
+            <div style="padding: 30px; background: #f8f9fa; border-radius: 0 0 12px 12px;">
+              <h2 style="color: #1f2937; margin-bottom: 20px;">Your survey has been submitted successfully</h2>
+              
+              <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <h3 style="color: #1f2937; margin: 0 0 10px 0;">${surveyData.title}</h3>
+                <p style="color: #6b7280; margin: 0;">Your responses have been analyzed and insights have been generated.</p>
+              </div>
+              
+              <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+                <h4 style="color: #1e40af; margin: 0 0 10px 0;">AI Analysis Summary</h4>
+                <p style="color: #1e40af; margin: 0; font-size: 14px;">${analysis.summary}</p>
+              </div>
+              
+              <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+                <h4 style="color: #166534; margin: 0 0 10px 0;">Key Insights</h4>
+                <ul style="color: #166534; margin: 0; padding-left: 20px;">
+                  ${analysis.key_themes?.map((theme: string) => `<li>${theme}</li>`).join('') || '<li>Your feedback has been processed</li>'}
+                </ul>
+              </div>
+              
+              <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+                Your feedback is valuable and will help improve team performance. You can view detailed insights in your LauAI dashboard.
+              </p>
+            </div>
+            
+            <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px;">
+              <p>© 2024 LauAI. All rights reserved.</p>
+            </div>
+          </div>
+        `
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Resend API error: ${response.statusText}`);
+    }
+
+    console.log('Survey completion email sent successfully');
+  } catch (error) {
+    console.error('Error sending survey completion email:', error);
+  }
+}
 
 async function analyzeSurveyResponsesWithAI(responses: any[], apiKey?: string) {
   try {
