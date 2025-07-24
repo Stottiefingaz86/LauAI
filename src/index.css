@@ -1,0 +1,308 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1f1f1f 100%);
+  min-height: 100vh;
+  color: white;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.App {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Enhanced glassmorphic components */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 12px 24px;
+  color: white;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.glass-button:active {
+  transform: translateY(0);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: white;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.glass-input:focus {
+  outline: none;
+  border-color: rgba(132, 255, 200, 0.5);
+  box-shadow: 0 0 0 3px rgba(132, 255, 200, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.glass-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Enhanced sidebar glass effect */
+.glass-sidebar {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(25px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Enhanced top navigation */
+.glass-topnav {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(25px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Enhanced modal backdrop */
+.glass-modal {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+/* Enhanced gradient backgrounds */
+.gradient-bg {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1f1f1f 100%);
+}
+
+.gradient-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+/* Enhanced mint accent with better contrast */
+.mint-accent {
+  color: #84ffc8;
+}
+
+.mint-bg {
+  background: linear-gradient(135deg, #84ffc8 0%, #6bffb3 100%);
+  color: #1a1a1a;
+}
+
+.mint-border {
+  border-color: rgba(132, 255, 200, 0.3);
+}
+
+/* Enhanced shadows for depth */
+.depth-shadow {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.depth-shadow-hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhanced text colors for better contrast */
+.text-primary {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.text-secondary {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.text-muted {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Enhanced scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Enhanced focus states */
+.focus-ring {
+  box-shadow: 0 0 0 3px rgba(132, 255, 200, 0.2);
+}
+
+/* Enhanced animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Enhanced glassmorphic table */
+.glass-table {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.glass-table th {
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.glass-table td {
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.glass-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Enhanced form elements */
+.glass-select {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: white;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.glass-select:focus {
+  outline: none;
+  border-color: rgba(132, 255, 200, 0.5);
+  box-shadow: 0 0 0 3px rgba(132, 255, 200, 0.1);
+}
+
+.glass-textarea {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: white;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  width: 100%;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.glass-textarea:focus {
+  outline: none;
+  border-color: rgba(132, 255, 200, 0.5);
+  box-shadow: 0 0 0 3px rgba(132, 255, 200, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Enhanced status indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(10px);
+}
+
+.status-green {
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.status-yellow {
+  background: rgba(234, 179, 8, 0.2);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: #fbbf24;
+}
+
+.status-red {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+} 
