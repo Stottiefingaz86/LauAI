@@ -18,14 +18,16 @@ import {
   Lightbulb,
   CheckCircle2,
   Target,
-  Award
+  Award,
+  Play,
+  FileText
 } from 'lucide-react';
 import { surveyService } from '../lib/supabaseService';
 import { emailService } from '../lib/emailService';
 import { useAuth } from '../contexts/AuthContext';
 
 const Surveys = () => {
-  const { user } = useAuth();
+  const { user, isAdmin, isMember } = useAuth();
   const [surveys, setSurveys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSurvey, setSelectedSurvey] = useState(null);
@@ -129,7 +131,146 @@ const Surveys = () => {
     );
   }
 
-  // Empty state for new users
+  // Member view - only show surveys they can take
+  if (isMember) {
+    const availableSurveys = surveys.filter(survey => survey.status === 'active');
+    
+    if (availableSurveys.length === 0) {
+      return (
+        <div className="p-6">
+          <div className="text-center py-12">
+            <div className="w-20 h-20 bg-gradient-to-r from-mint to-mint-dark rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText size={32} className="text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-primary mb-2">No Surveys Available</h1>
+            <p className="text-secondary text-lg">You don't have any surveys to complete at the moment.</p>
+            <p className="text-muted text-sm mt-2">Your administrator will send you surveys when they're ready.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-6">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-primary">My Surveys</h1>
+          <p className="text-secondary">Complete your assigned surveys</p>
+        </div>
+
+        {/* Available Surveys */}
+        <div className="space-y-4">
+          {availableSurveys.map((survey) => {
+            const status = getSurveyStatus(survey);
+            const statusIcon = getSurveyIcon(survey);
+            
+            return (
+              <div key={survey.id} className="glass-card p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-semibold text-primary">{survey.title}</h3>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.color} ${status.bg} flex items-center`}>
+                        {statusIcon}
+                        <span className="ml-1">{status.text}</span>
+                      </span>
+                    </div>
+                    <p className="text-secondary text-sm mb-3">{survey.description}</p>
+                    <div className="flex items-center gap-4 text-xs text-muted">
+                      <span className="flex items-center gap-1">
+                        <Clock size={14} />
+                        Estimated time: {survey.estimated_time || '5-10 minutes'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar size={14} />
+                        Due: {survey.due_date ? new Date(survey.due_date).toLocaleDateString() : 'No deadline'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedSurvey(survey);
+                        setShowSurveyPreview(true);
+                      }}
+                      className="btn-secondary p-2"
+                      title="Preview Survey"
+                    >
+                      <Eye size={16} />
+                    </button>
+                    
+                    <a
+                      href={generateSurveyUrl(survey.id, user?.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary flex items-center gap-2"
+                    >
+                      <Play size={16} />
+                      Start Survey
+                    </a>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Survey Preview Modal */}
+        {showSurveyPreview && selectedSurvey && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="glass-modal w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-primary">Survey Preview</h3>
+                <button
+                  onClick={() => setShowSurveyPreview(false)}
+                  className="text-muted hover:text-primary"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <h4 className="text-xl font-semibold text-primary">{selectedSurvey.title}</h4>
+                <p className="text-secondary">{selectedSurvey.description}</p>
+                
+                <div className="space-y-3">
+                  {selectedSurvey.questions?.map((question, index) => (
+                    <div key={question.id} className="glass-card p-4">
+                      <p className="font-medium text-primary mb-2">
+                        {index + 1}. {question.question_text}
+                      </p>
+                      <p className="text-sm text-muted">{question.question_type}</p>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setShowSurveyPreview(false)}
+                    className="btn-secondary flex-1"
+                  >
+                    Close
+                  </button>
+                  <a
+                    href={generateSurveyUrl(selectedSurvey.id, user?.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary flex items-center gap-2 flex-1 justify-center"
+                  >
+                    <Play size={16} />
+                    Start Survey
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Admin view - show all surveys with management options
   if (surveys.length === 0) {
     return (
       <div className="p-6">

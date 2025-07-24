@@ -20,7 +20,7 @@ import { teamService, memberService } from '../lib/supabaseService';
 import { useAuth } from '../contexts/AuthContext';
 
 const Teams = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [teams, setTeams] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -144,6 +144,22 @@ const Teams = () => {
   };
 
   const hasData = teams.length > 0 || members.length > 0;
+
+  // Access control - only admins can see teams management
+  if (!isAdmin) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12">
+          <div className="w-20 h-20 bg-gradient-to-r from-red-500 to-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={32} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-primary mb-2">Access Denied</h1>
+          <p className="text-secondary text-lg">You don't have permission to manage teams.</p>
+          <p className="text-muted text-sm mt-2">Only administrators can access team management features.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

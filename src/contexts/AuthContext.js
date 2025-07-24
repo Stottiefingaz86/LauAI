@@ -15,6 +15,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState(null)
+  const [userRole, setUserRole] = useState(null)
 
   useEffect(() => {
     // Get initial session
@@ -23,6 +24,12 @@ export const AuthProvider = ({ children }) => {
         const { session } = await authService.getSession()
         setSession(session)
         setUser(session?.user ?? null)
+        
+        // Get user role from metadata or default to 'member'
+        if (session?.user) {
+          const role = session.user.user_metadata?.role || 'member'
+          setUserRole(role)
+        }
       } catch (error) {
         console.error('Error getting initial session:', error)
       } finally {
@@ -37,6 +44,15 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         setSession(session)
         setUser(session?.user ?? null)
+        
+        // Get user role from metadata or default to 'member'
+        if (session?.user) {
+          const role = session.user.user_metadata?.role || 'member'
+          setUserRole(role)
+        } else {
+          setUserRole(null)
+        }
+        
         setLoading(false)
       }
     )
@@ -44,9 +60,9 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe()
   }, [])
 
-  const signUp = async (email, password, firstName, lastName) => {
+  const signUp = async (email, password, firstName, lastName, role = 'member') => {
     try {
-      const { data, error } = await authService.signUp(email, password, firstName, lastName)
+      const { data, error } = await authService.signUp(email, password, firstName, lastName, role)
       if (error) throw error
       return { data, error: null }
     } catch (error) {
@@ -74,10 +90,16 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const isAdmin = userRole === 'admin'
+  const isMember = userRole === 'member'
+
   const value = {
     user,
     session,
     loading,
+    userRole,
+    isAdmin,
+    isMember,
     signUp,
     signIn,
     signOut,
