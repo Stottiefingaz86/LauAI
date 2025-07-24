@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { 
   Plus, 
   Send, 
@@ -14,7 +13,12 @@ import {
   Calendar,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  ArrowRight,
+  Lightbulb,
+  CheckCircle2,
+  Target,
+  Award
 } from 'lucide-react';
 import { surveyService } from '../lib/supabaseService';
 import { emailService } from '../lib/emailService';
@@ -125,6 +129,202 @@ const Surveys = () => {
     );
   }
 
+  // Empty state for new users
+  if (surveys.length === 0) {
+    return (
+      <div className="p-6">
+        {/* Welcome Header */}
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-gradient-to-r from-mint to-mint-dark rounded-full flex items-center justify-center mx-auto mb-4">
+            <BarChart3 size={32} className="text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-primary mb-2">Create Your First Survey</h1>
+          <p className="text-secondary text-lg">Start gathering team feedback and insights</p>
+        </div>
+
+        {/* Onboarding Steps */}
+        <div className="max-w-4xl mx-auto">
+          <div className="glass-card p-8 mb-6">
+            <h2 className="text-xl font-semibold text-primary mb-6 flex items-center gap-2">
+              <CheckCircle2 size={24} className="text-mint" />
+              Get Started in 3 Steps
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Plus size={24} className="text-mint-dark" />
+                </div>
+                <h3 className="text-lg font-semibold text-primary mb-2">1. Create Survey</h3>
+                <p className="text-secondary text-sm mb-4">Design your first survey with questions that matter to your team.</p>
+                <button className="btn-primary flex items-center gap-2 mx-auto">
+                  <Plus size={16} />
+                  Create Survey
+                </button>
+              </div>
+
+              <div className="text-center">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail size={24} className="text-blue-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-primary mb-2">2. Send to Team</h3>
+                <p className="text-secondary text-sm mb-4">Invite your team members to complete the survey via email.</p>
+                <button className="btn-primary flex items-center gap-2 mx-auto">
+                  <Send size={16} />
+                  Send Survey
+                </button>
+              </div>
+
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <BarChart3 size={24} className="text-green-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-primary mb-2">3. Analyze Results</h3>
+                <p className="text-secondary text-sm mb-4">Get AI-powered insights and recommendations from responses.</p>
+                <button className="btn-primary flex items-center gap-2 mx-auto">
+                  <Eye size={16} />
+                  View Insights
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="glass-card p-6">
+              <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
+                <Clock size={20} />
+                Quick Setup
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-mint-bg rounded-lg">
+                  <div className="w-8 h-8 bg-mint-accent rounded-full flex items-center justify-center">
+                    <BarChart3 size={16} className="text-mint-dark" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-primary">Use Survey Templates</p>
+                    <p className="text-xs text-secondary">Start with proven question sets</p>
+                  </div>
+                  <ArrowRight size={16} className="text-muted" />
+                </div>
+                
+                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Mail size={16} className="text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-primary">Bulk Send Invitations</p>
+                    <p className="text-xs text-secondary">Send to multiple team members at once</p>
+                  </div>
+                  <ArrowRight size={16} className="text-muted" />
+                </div>
+                
+                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <Target size={16} className="text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-primary">Set Response Goals</p>
+                    <p className="text-xs text-secondary">Track completion rates and targets</p>
+                  </div>
+                  <ArrowRight size={16} className="text-muted" />
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card p-6">
+              <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
+                <Lightbulb size={20} />
+                What You'll Get
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 bg-mint rounded-full mt-2"></div>
+                  <div>
+                    <p className="text-sm font-medium text-primary">Team Feedback Insights</p>
+                    <p className="text-xs text-secondary">Understand team satisfaction and concerns</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full mt-2"></div>
+                  <div>
+                    <p className="text-sm font-medium text-primary">Performance Trends</p>
+                    <p className="text-xs text-secondary">Track changes over time</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 bg-green-400 rounded-full mt-2"></div>
+                  <div>
+                    <p className="text-sm font-medium text-primary">AI Recommendations</p>
+                    <p className="text-xs text-secondary">Get actionable improvement suggestions</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-2 h-2 bg-purple-400 rounded-full mt-2"></div>
+                  <div>
+                    <p className="text-sm font-medium text-primary">Response Analytics</p>
+                    <p className="text-xs text-secondary">Detailed breakdown of survey results</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Survey Templates */}
+          <div className="glass-card p-6 mt-6">
+            <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
+              <Award size={20} />
+              Popular Survey Templates
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button className="p-4 bg-mint-bg rounded-lg text-left hover:bg-mint-accent transition-colors">
+                <h4 className="font-medium text-primary mb-1">📊 Team Check-in</h4>
+                <p className="text-xs text-secondary">Quick weekly team pulse survey</p>
+              </button>
+              
+              <button className="p-4 bg-blue-50 rounded-lg text-left hover:bg-blue-100 transition-colors">
+                <h4 className="font-medium text-primary mb-1">🎯 Performance Review</h4>
+                <p className="text-xs text-secondary">Comprehensive quarterly assessment</p>
+              </button>
+              
+              <button className="p-4 bg-green-50 rounded-lg text-left hover:bg-green-100 transition-colors">
+                <h4 className="font-medium text-primary mb-1">💡 Innovation Survey</h4>
+                <p className="text-xs text-secondary">Gather ideas and feedback</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Help Resources */}
+          <div className="glass-card p-6 mt-6">
+            <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
+              <AlertCircle size={20} />
+              Need Help?
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button className="p-4 bg-mint-bg rounded-lg text-left hover:bg-mint-accent transition-colors">
+                <h4 className="font-medium text-primary mb-1">📚 Survey Guide</h4>
+                <p className="text-xs text-secondary">Learn best practices for survey design</p>
+              </button>
+              
+              <button className="p-4 bg-blue-50 rounded-lg text-left hover:bg-blue-100 transition-colors">
+                <h4 className="font-medium text-primary mb-1">🎥 Video Tutorials</h4>
+                <p className="text-xs text-secondary">Watch step-by-step survey creation</p>
+              </button>
+              
+              <button className="p-4 bg-green-50 rounded-lg text-left hover:bg-green-100 transition-colors">
+                <h4 className="font-medium text-primary mb-1">💬 Support Chat</h4>
+                <p className="text-xs text-secondary">Get help from our team</p>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -139,7 +339,7 @@ const Surveys = () => {
         </button>
       </div>
 
-      {/* Survey Stats */}
+      {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="glass-card p-4">
           <div className="flex items-center justify-between">
@@ -152,6 +352,7 @@ const Surveys = () => {
             </div>
           </div>
         </div>
+
         <div className="glass-card p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -165,6 +366,7 @@ const Surveys = () => {
             </div>
           </div>
         </div>
+
         <div className="glass-card p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -178,6 +380,7 @@ const Surveys = () => {
             </div>
           </div>
         </div>
+
         <div className="glass-card p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -205,7 +408,7 @@ const Surveys = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-lg font-semibold text-primary">{survey.title}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.color} ${status.bg}`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.color} ${status.bg} flex items-center`}>
                       {statusIcon}
                       <span className="ml-1">{status.text}</span>
                     </span>
