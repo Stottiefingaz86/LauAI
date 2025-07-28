@@ -9,7 +9,6 @@ import Teams from './pages/Teams';
 import Surveys from './pages/Surveys';
 import Billing from './pages/Billing';
 import TeamMember from './pages/TeamMember';
-import SurveyPage from './pages/SurveyPage';
 import SurveyCompletion from './pages/SurveyCompletion';
 import EntryFlow from './pages/EntryFlow';
 import InvitePage from './pages/InvitePage';
@@ -18,9 +17,6 @@ import TestPage from './pages/TestPage';
 // Simple Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-
-  console.log('ProtectedRoute render - user:', user);
-  console.log('ProtectedRoute render - loading:', loading);
 
   if (loading) {
     return (
@@ -36,20 +32,15 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!user) {
-    console.log('ProtectedRoute - no user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
-  console.log('ProtectedRoute - user authenticated, rendering children');
   return children;
 };
 
 // Main App Component
 const AppContent = () => {
-  const { user, loading } = useAuth();
-
-  console.log('AppContent render - user:', user);
-  console.log('AppContent render - loading:', loading);
+  const { user } = useAuth();
 
   return (
     <Router>
@@ -64,7 +55,7 @@ const AppContent = () => {
         {/* Public Survey Completion Route */}
         <Route path="/survey/:surveyId/member/:memberId" element={<SurveyCompletion />} />
         
-        {/* Protected Routes - Simple structure */}
+        {/* Protected Routes */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <AppShell>
@@ -97,41 +88,11 @@ const AppContent = () => {
           </ProtectedRoute>
         } />
         
-        <Route path="/team/:memberId" element={
-          <ProtectedRoute>
-            <AppShell>
-              <TeamMember />
-            </AppShell>
-          </ProtectedRoute>
-        } />
-        
         <Route path="/member/:memberId" element={
           <ProtectedRoute>
             <AppShell>
               <TeamMember />
             </AppShell>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/survey/:surveyId" element={
-          <ProtectedRoute>
-            <AppShell>
-              <SurveyPage />
-            </AppShell>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/survey/:surveyId/completion" element={
-          <ProtectedRoute>
-            <AppShell>
-              <SurveyCompletion />
-            </AppShell>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/survey/:surveyId/member/:memberId" element={
-          <ProtectedRoute>
-            <SurveyCompletion />
           </ProtectedRoute>
         } />
         
