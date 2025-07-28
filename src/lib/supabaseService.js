@@ -661,12 +661,90 @@ export const surveyService = {
   },
 
   async deleteSurvey(surveyId) {
-    const { data, error } = await supabase
-      .from('surveys')
-      .delete()
-      .eq('id', surveyId)
+    try {
+      console.log('🗑️ Starting comprehensive survey deletion for:', surveyId);
+      
+      // Delete in the correct order to avoid foreign key constraint issues
+      const deletionSteps = [
+        // 1. Delete survey responses first (they reference questions and members)
+        async () => {
+          console.log('📝 Deleting survey responses...');
+          const { error } = await supabase
+            .from('survey_responses')
+            .delete()
+            .eq('survey_id', surveyId);
+          if (error) throw error;
+          console.log('✅ Survey responses deleted');
+        },
+        
+        // 2. Delete survey insights
+        async () => {
+          console.log('🧠 Deleting survey insights...');
+          const { error } = await supabase
+            .from('survey_insights')
+            .delete()
+            .eq('survey_id', surveyId);
+          if (error) throw error;
+          console.log('✅ Survey insights deleted');
+        },
+        
+        // 3. Delete survey completions
+        async () => {
+          console.log('✅ Deleting survey completions...');
+          const { error } = await supabase
+            .from('survey_completions')
+            .delete()
+            .eq('survey_id', surveyId);
+          if (error) throw error;
+          console.log('✅ Survey completions deleted');
+        },
+        
+        // 4. Delete survey invitations
+        async () => {
+          console.log('📧 Deleting survey invitations...');
+          const { error } = await supabase
+            .from('survey_invitations')
+            .delete()
+            .eq('survey_id', surveyId);
+          if (error) throw error;
+          console.log('✅ Survey invitations deleted');
+        },
+        
+        // 5. Delete survey questions
+        async () => {
+          console.log('❓ Deleting survey questions...');
+          const { error } = await supabase
+            .from('survey_questions')
+            .delete()
+            .eq('survey_id', surveyId);
+          if (error) throw error;
+          console.log('✅ Survey questions deleted');
+        },
+        
+        // 6. Finally delete the survey itself
+        async () => {
+          console.log('📊 Deleting survey...');
+          const { error } = await supabase
+            .from('surveys')
+            .delete()
+            .eq('id', surveyId);
+          if (error) throw error;
+          console.log('✅ Survey deleted');
+        }
+      ];
 
-    return { data, error }
+      // Execute all deletion steps
+      for (const step of deletionSteps) {
+        await step();
+      }
+
+      console.log('🎉 Survey deletion completed successfully');
+      return { data: { success: true }, error: null };
+      
+    } catch (error) {
+      console.error('❌ Error deleting survey:', error);
+      return { data: null, error };
+    }
   },
 
   async createSurveyQuestion(questionData) {

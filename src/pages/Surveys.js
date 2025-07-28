@@ -238,19 +238,28 @@ const Surveys = () => {
   };
 
   const deleteSurvey = async (surveyId) => {
-    if (!window.confirm('Are you sure you want to delete this survey?')) return;
+    if (!window.confirm('Are you sure you want to delete this survey? This action cannot be undone and will remove all related data including responses and insights.')) return;
 
     try {
+      console.log('🗑️ Deleting survey:', surveyId);
+      
       const { error } = await surveyService.deleteSurvey(surveyId);
       if (error) {
-        console.error('Error deleting survey:', error);
+        console.error('❌ Error deleting survey:', error);
         alert(`Failed to delete survey: ${error.message}`);
       } else {
+        console.log('✅ Survey deleted successfully, refreshing list...');
+        
+        // Remove from local state immediately
         setSurveys(prev => prev.filter(s => s.id !== surveyId));
+        
+        // Also reload from database to ensure consistency
+        await loadSurveys();
+        
         alert('Survey deleted successfully!');
       }
     } catch (error) {
-      console.error('Error deleting survey:', error);
+      console.error('❌ Error deleting survey:', error);
       alert(`Failed to delete survey: ${error.message}`);
     }
   };
