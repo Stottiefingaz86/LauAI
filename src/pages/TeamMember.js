@@ -198,7 +198,7 @@ const TeamMember = () => {
 
   const handleSendSurvey = async (surveyId, targetType, targetId) => {
     try {
-      console.log('Starting handleSendSurvey with:', { surveyId, targetType, targetId });
+      console.log('🚀 Starting handleSendSurvey with:', { surveyId, targetType, targetId });
       
       if (!surveyId) {
         alert('Please select a survey to send');
@@ -209,33 +209,33 @@ const TeamMember = () => {
       const { data: survey, error: surveyError } = await surveyService.getSurveyById(surveyId);
       
       if (surveyError || !survey) {
-        console.error('Error fetching survey:', surveyError);
+        console.error('❌ Error fetching survey:', surveyError);
         alert('Survey not found or error loading survey');
         return;
       }
 
-      console.log('Sending survey', surveyId, 'to member:', member.name, 'URL:', `${window.location.origin}/survey/${surveyId}/member/${memberId}`);
-      console.log('Survey found:', survey);
+      console.log('📧 Sending survey', surveyId, 'to member:', member.name);
+      console.log('📋 Survey found:', survey);
 
-      // Send the survey email
-      const result = await memberService.sendSurveyEmail(surveyId, [memberId]);
+      // Send the survey email using the correct service
+      const result = await surveyService.sendSurveyEmail(surveyId, [memberId]);
       
-      console.log('Survey send result:', result);
+      console.log('📤 Survey send result:', result);
       
       if (result.error) {
-        console.error('Error sending survey:', result.error);
+        console.error('❌ Error sending survey:', result.error);
         alert(`Failed to send survey: ${result.error.message}`);
         return;
       }
 
-      console.log('Survey sent successfully:', result.data);
+      console.log('✅ Survey sent successfully:', result.data);
       alert(`Survey sent successfully to ${result.data.members_sent} member(s)`);
       
       // Reload insights to update counts
       loadInsights();
       
     } catch (error) {
-      console.error('Error in handleSendSurvey:', error);
+      console.error('❌ Error in handleSendSurvey:', error);
       alert('Failed to send survey. Please try again.');
     }
   };
