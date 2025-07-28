@@ -845,7 +845,7 @@ export const surveyService = {
 
   async sendSurveyEmail(surveyId, memberIds) {
     try {
-      console.log('Starting sendSurveyEmail with:', { surveyId, memberIds });
+      console.log('🚀 Starting sendSurveyEmail with:', { surveyId, memberIds });
       
       // First, verify the survey exists
       const { data: survey, error: surveyError } = await supabase
@@ -855,11 +855,11 @@ export const surveyService = {
         .single();
 
       if (surveyError || !survey) {
-        console.error('Survey not found:', surveyId, surveyError);
+        console.error('❌ Survey not found:', surveyId, surveyError);
         return { data: null, error: { message: 'Survey not found' } };
       }
 
-      console.log('Survey found:', survey);
+      console.log('✅ Survey found:', survey);
 
       // Get the member details
       const { data: members, error: membersError } = await supabase
@@ -868,16 +868,16 @@ export const surveyService = {
         .in('id', memberIds);
 
       if (membersError) {
-        console.error('Error fetching members:', membersError);
+        console.error('❌ Error fetching members:', membersError);
         return { data: null, error: membersError };
       }
 
       if (!members || members.length === 0) {
-        console.error('No members found for IDs:', memberIds);
+        console.error('❌ No members found for IDs:', memberIds);
         return { data: null, error: { message: 'No members found' } };
       }
 
-      console.log('Members found:', members);
+      console.log('✅ Members found:', members);
 
       // Create survey invitations for tracking
       const invitations = members.map(member => ({
@@ -888,7 +888,7 @@ export const surveyService = {
         sent_at: new Date().toISOString()
       }));
 
-      console.log('Creating invitations:', invitations);
+      console.log('📧 Creating invitations:', invitations);
 
       // Try to insert into survey_invitations table
       let surveyInvitationsResult = null;
@@ -899,14 +899,14 @@ export const surveyService = {
           .select();
 
         if (invitationsError) {
-          console.error('Error creating survey invitations:', invitationsError);
+          console.error('❌ Error creating survey invitations:', invitationsError);
           // Continue with fallback tracking
         } else {
           surveyInvitationsResult = invitationsData;
-          console.log('Survey invitations created successfully:', invitationsData);
+          console.log('✅ Survey invitations created successfully:', invitationsData);
         }
       } catch (error) {
-        console.error('Exception creating survey invitations:', error);
+        console.error('❌ Exception creating survey invitations:', error);
         // Continue with fallback tracking
       }
 
@@ -942,9 +942,12 @@ export const surveyService = {
       }
 
       // Send actual emails
+      console.log('📤 Starting email sending process...');
       const emailPromises = members.map(async (member) => {
         try {
           const surveyUrl = `${window.location.origin}/survey/${surveyId}?member=${member.id}`;
+          
+          console.log('📧 Sending email to:', member.email, 'with URL:', surveyUrl);
           
           const emailResult = await emailService.sendSurveyInvitationEmail(
             member.email,
@@ -953,10 +956,10 @@ export const surveyService = {
             member.name
           );
 
-          console.log(`Email result for ${member.email}:`, emailResult);
+          console.log(`📤 Email result for ${member.email}:`, emailResult);
           return { member, emailResult };
         } catch (error) {
-          console.error(`Error sending email to ${member.email}:`, error);
+          console.error(`❌ Error sending email to ${member.email}:`, error);
           return { member, emailResult: { success: false, error: error.message } };
         }
       });
@@ -965,12 +968,20 @@ export const surveyService = {
       const successfulEmails = emailResults.filter(result => result.emailResult.success);
       const failedEmails = emailResults.filter(result => !result.emailResult.success);
 
-      console.log('Email sending results:', {
+      console.log('📊 Email sending results:', {
         total: emailResults.length,
         successful: successfulEmails.length,
         failed: failedEmails.length,
         failedEmails: failedEmails.map(r => ({ email: r.member.email, error: r.emailResult.error }))
       });
+
+      if (successfulEmails.length === 0) {
+        console.error('❌ No emails sent successfully');
+        return { 
+          data: null, 
+          error: { message: 'Failed to send any emails. Check console for details.' }
+        };
+      }
 
       return { 
         data: { 
@@ -983,7 +994,7 @@ export const surveyService = {
         error: failedEmails.length > 0 ? { message: `Failed to send to ${failedEmails.length} members` } : null
       };
     } catch (error) {
-      console.error('Error in sendSurveyEmail:', error);
+      console.error('❌ Error in sendSurveyEmail:', error);
       return { data: null, error };
     }
   },

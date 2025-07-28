@@ -13,6 +13,7 @@ import SurveyPage from './pages/SurveyPage';
 import SurveyCompletion from './pages/SurveyCompletion';
 import EntryFlow from './pages/EntryFlow';
 import InvitePage from './pages/InvitePage';
+import TestPage from './pages/TestPage';
 
 // Simple Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -139,6 +140,13 @@ const AppContent = () => {
             <AppShell>
               <EntryFlow />
             </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        {/* Test Route */}
+        <Route path="/test" element={
+          <ProtectedRoute>
+            <TestPage />
           </ProtectedRoute>
         } />
         
