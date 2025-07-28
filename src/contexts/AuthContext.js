@@ -1,9 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService, billingService } from '../lib/supabaseService';
-import { emailService } from '../lib/emailService'; // Added import for emailService
-
-// Production URL configuration
-const PRODUCTION_URL = 'https://lau-r6el3zy53-chris-projects-e99bc8f6.vercel.app';
+import { emailService } from '../lib/emailService';
 
 const AuthContext = createContext();
 
@@ -60,13 +57,15 @@ export const AuthProvider = ({ children }) => {
     const timeoutId = setTimeout(() => {
       console.log('Loading timeout reached, setting loading to false');
       setLoading(false);
-    }, 5000); // 5 second timeout
+    }, 3000); // 3 second timeout
 
     loadUser();
 
     return () => clearTimeout(timeoutId);
+  }, []);
 
-    // Listen for auth changes
+  // Listen for auth changes
+  useEffect(() => {
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
       console.log('Auth state change:', event, session);
       
@@ -120,7 +119,7 @@ export const AuthProvider = ({ children }) => {
           totalSeats: 999,
           monthlyCost: 0,
           nextBillingDate: null,
-          inviteLink: `${PRODUCTION_URL}/invite/${userId}`,
+          inviteLink: `https://lau-ai.vercel.app/invite/${userId}`,
           trialDaysLeft: 999,
           subscriptionStatus: 'active'
         };
@@ -135,7 +134,7 @@ export const AuthProvider = ({ children }) => {
           totalSeats: data.total_seats || 1,
           monthlyCost: data.monthly_cost || 20,
           nextBillingDate: data.next_billing_date ? new Date(data.next_billing_date) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-          inviteLink: data.invite_link || `${PRODUCTION_URL}/invite/${userId}`,
+          inviteLink: data.invite_link || `https://lau-ai.vercel.app/invite/${userId}`,
           trialDaysLeft: data.trial_days_left || 14,
           subscriptionStatus: data.subscription_status || 'trial'
         };
@@ -370,13 +369,6 @@ export const AuthProvider = ({ children }) => {
   const isManager = user?.user_metadata?.role === 'manager';
   const isLeader = user?.user_metadata?.role === 'leader';
   const isMember = user?.user_metadata?.role === 'member';
-
-  // Debug role detection
-  console.log('AuthContext - user:', user);
-  console.log('AuthContext - user_metadata:', user?.user_metadata);
-  console.log('AuthContext - isMasterAccount:', isMasterAccount);
-  console.log('AuthContext - isAdmin:', isAdmin);
-  console.log('AuthContext - user role from metadata:', user?.user_metadata?.role);
 
   const value = {
     user,
