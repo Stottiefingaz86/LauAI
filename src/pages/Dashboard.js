@@ -250,7 +250,7 @@ const Dashboard = () => {
       .slice(0, 5);
 
     // Calculate team performance
-    const teamPerformance = teamsWithMembers.map(team => {
+    const teamPerformance = (dashboardData.teams || []).map(team => {
       const teamMembers = performanceData.filter(member => member.team_id === team.id);
       const avgScore = teamMembers.length > 0 
         ? teamMembers.reduce((sum, member) => sum + member.performance.score, 0) / teamMembers.length
