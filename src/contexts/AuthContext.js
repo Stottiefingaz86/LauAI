@@ -14,7 +14,6 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [billingInfo, setBillingInfo] = useState({
     plan: 'basic',
     seats: 1,
@@ -48,20 +47,10 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (error) {
         console.error('Error loading user:', error);
-      } finally {
-        setLoading(false);
       }
     };
 
-    // Add timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      console.log('Loading timeout reached, setting loading to false');
-      setLoading(false);
-    }, 3000); // 3 second timeout
-
     loadUser();
-
-    return () => clearTimeout(timeoutId);
   }, []);
 
   // Listen for auth changes
@@ -372,7 +361,6 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
-    loading,
     signUp,
     signIn,
     signOut,
