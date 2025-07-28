@@ -2,399 +2,434 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   CheckCircle, 
-  Heart, 
-  Star, 
-  Users, 
-  TrendingUp,
-  ArrowRight,
-  Home,
-  Mail
+  AlertCircle, 
+  Loader2,
+  Send,
+  Star,
+  Clock,
+  FileText,
+  ArrowLeft
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { surveyService } from '../lib/supabaseService';
-import { useAuth } from '../contexts/AuthContext';
 
 const SurveyCompletion = () => {
-  const { surveyId, userId } = useParams();
+  const { surveyId, memberId } = useParams();
   const navigate = useNavigate();
-  const { user, isMember } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [surveyData, setSurveyData] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [showThankYou, setShowThankYou] = useState(false);
+  const [survey, setSurvey] = useState(null);
+  const [member, setMember] = useState(null);
+  const [questions, setQuestions] = useState([]);
   const [responses, setResponses] = useState({});
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [progress, setProgress] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
-    loadSurveyData();
-  }, [surveyId]);
+    loadSurveyAndMember();
+  }, [surveyId, memberId]);
 
-  const loadSurveyData = async () => {
+  const loadSurveyAndMember = async () => {
     try {
       setLoading(true);
-      const { data, error } = await surveyService.getSurveyById(surveyId);
-      
-      if (error) {
-        console.error('Error loading survey:', error);
-        // Redirect to error page or show error
-        return;
-      }
+      setError(null);
 
-      setSurveyData(data);
-      setProgress(0);
+      // Load survey details
+      const { data: surveyData, error: surveyError } = await surveyService.getSurveyById(surveyId);
+      if (surveyError) throw surveyError;
+      setSurvey(surveyData);
+
+      // Load member details
+      const { data: memberData, error: memberError } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', memberId)
+        .single();
+      if (memberError) throw memberError;
+      setMember(memberData);
+
+      // Load survey questions
+      const { data: questionsData, error: questionsError } = await surveyService.getSurveyQuestions(surveyId);
+      if (questionsError) throw questionsError;
+      setQuestions(questionsData || []);
+
+      // Initialize responses
+      const initialResponses = {};
+      (questionsData || []).forEach(question => {
+        initialResponses[question.id] = '';
+      });
+      setResponses(initialResponses);
+
     } catch (error) {
-      console.error('Error loading survey data:', error);
+      console.error('Error loading survey:', error);
+      setError('Failed to load survey. Please check the link and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAnswerChange = (questionId, answer) => {
+  const handleResponseChange = (questionId, value) => {
     setResponses(prev => ({
       ...prev,
-      [questionId]: answer
+      [questionId]: value
     }));
   };
 
-  const handleNext = () => {
-    if (currentQuestion < surveyData.questions.length - 1) {
-      setCurrentQuestion(prev => prev + 1);
-      setProgress(((currentQuestion + 2) / surveyData.questions.length) * 100);
-    } else {
-      handleSubmit();
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentQuestion > 0) {
-      setCurrentQuestion(prev => prev - 1);
-      setProgress((currentQuestion / surveyData.questions.length) * 100);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setSubmitting(true);
+  const validateResponses = () => {
+    const requiredQuestions = questions.filter(q => q.required);
+    const missingResponses = requiredQuestions.filter(q => !responses[q.id] || responses[q.id].trim() === '');
     
-    try {
-      // Submit survey responses
-      const { error } = await surveyService.submitSurveyResponse({
-        survey_id: surveyId,
-        user_id: userId,
-        response_data: responses,
-        submitted_at: new Date().toISOString()
-      });
+    if (missingResponses.length > 0) {
+      setError(`Please answer all required questions (${missingResponses.length} remaining)`);
+      return false;
+    }
+    return true;
+  };
 
-      if (error) {
-        console.error('Error submitting survey:', error);
-        // Handle error
-        return;
+  const analyzeResponse = async (question, response) => {
+    // Real analysis based on question type and response
+    let analysis = {
+      sentiment: 'neutral',
+      score: 0,
+      insights: []
+    };
+
+    if (question.type === 'rating') {
+      const rating = parseInt(response);
+      analysis.score = rating;
+      analysis.sentiment = rating >= 4 ? 'positive' : rating <= 2 ? 'negative' : 'neutral';
+      analysis.insights.push(`Rating: ${rating}/5`);
+    } else if (question.type === 'text') {
+      const text = response.toLowerCase();
+      
+      // Sentiment analysis based on keywords
+      const positiveWords = ['good', 'great', 'excellent', 'happy', 'satisfied', 'love', 'enjoy', 'positive'];
+      const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'dislike', 'negative', 'poor', 'worst'];
+      
+      const positiveCount = positiveWords.filter(word => text.includes(word)).length;
+      const negativeCount = negativeWords.filter(word => text.includes(word)).length;
+      
+      analysis.sentiment = positiveCount > negativeCount ? 'positive' : negativeCount > positiveCount ? 'negative' : 'neutral';
+      analysis.score = positiveCount - negativeCount;
+      analysis.insights.push(`Sentiment: ${analysis.sentiment}`);
+    } else if (question.type === 'yes_no') {
+      const isYes = response.toLowerCase().includes('yes');
+      analysis.score = isYes ? 1 : 0;
+      analysis.sentiment = isYes ? 'positive' : 'negative';
+      analysis.insights.push(`Answer: ${response}`);
+    }
+
+    return analysis;
+  };
+
+  const submitSurvey = async () => {
+    if (!validateResponses()) return;
+
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      console.log('🚀 Starting survey submission process...');
+
+      // Save survey responses
+      const responseData = Object.entries(responses).map(([questionId, response]) => ({
+        survey_id: surveyId,
+        member_id: memberId,
+        question_id: questionId,
+        response: response,
+        submitted_at: new Date().toISOString()
+      }));
+
+      console.log('💾 Saving survey responses...');
+      const { error: responsesError } = await supabase
+        .from('survey_responses')
+        .insert(responseData);
+
+      if (responsesError) throw responsesError;
+      console.log('✅ Survey responses saved successfully');
+
+      // Analyze each response and save insights
+      console.log('🧠 Analyzing responses...');
+      const insights = [];
+      for (const [questionId, response] of Object.entries(responses)) {
+        const question = questions.find(q => q.id === questionId);
+        if (question && response.trim()) {
+          const analysis = await analyzeResponse(question, response);
+          insights.push({
+            survey_id: surveyId,
+            member_id: memberId,
+            question_id: questionId,
+            response: response,
+            sentiment: analysis.sentiment,
+            score: analysis.score,
+            insights: analysis.insights.join(', '),
+            created_at: new Date().toISOString()
+          });
+        }
       }
 
-      // Trigger flow update (this would typically call your backend)
-      await triggerFlowUpdate();
+      // Save insights
+      if (insights.length > 0) {
+        console.log('💾 Saving insights...');
+        const { error: insightsError } = await supabase
+          .from('survey_insights')
+          .insert(insights);
+        if (insightsError) throw insightsError;
+        console.log('✅ Insights saved successfully');
+      }
 
-      // Show thank you screen
-      setShowThankYou(true);
+      // Calculate overall survey score
+      const totalScore = insights.reduce((sum, insight) => sum + insight.score, 0);
+      const averageScore = insights.length > 0 ? totalScore / insights.length : 0;
+
+      // Update member's signals based on survey performance
+      const currentSignals = member.signals || 0;
+      const newSignals = Math.max(0, Math.min(10, currentSignals + (averageScore * 0.5)));
+
+      console.log('📊 Updating member signals...');
+      const { error: memberError } = await supabase
+        .from('members')
+        .update({ 
+          signals: newSignals,
+          last_survey: new Date().toISOString()
+        })
+        .eq('id', memberId);
+
+      if (memberError) throw memberError;
+      console.log('✅ Member signals updated');
+
+      // Mark survey as completed
+      console.log('✅ Marking survey as completed...');
+      const { error: completionError } = await supabase
+        .from('survey_completions')
+        .insert({
+          survey_id: surveyId,
+          member_id: memberId,
+          completed_at: new Date().toISOString(),
+          total_score: averageScore,
+          response_count: Object.keys(responses).length
+        });
+
+      if (completionError) throw completionError;
+      console.log('✅ Survey completion recorded');
+
+      // Trigger edge function for advanced AI analysis
+      console.log('🤖 Triggering AI analysis...');
+      try {
+        const analysisResponse = await fetch('/api/analyze-survey', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            survey_id: surveyId,
+            member_id: memberId,
+            responses: Object.entries(responses).map(([questionId, response]) => ({
+              question_id: questionId,
+              response_data: response
+            })),
+            team_id: member.team_id
+          })
+        });
+
+        if (analysisResponse.ok) {
+          const analysisResult = await analysisResponse.json();
+          console.log('✅ AI analysis completed:', analysisResult);
+        } else {
+          console.warn('⚠️ AI analysis failed, but survey was completed successfully');
+        }
+      } catch (analysisError) {
+        console.warn('⚠️ AI analysis error, but survey was completed:', analysisError);
+      }
+
+      setSubmitted(true);
+      console.log('🎉 Survey submitted successfully with analysis');
+
     } catch (error) {
-      console.error('Error submitting survey:', error);
+      console.error('❌ Error submitting survey:', error);
+      setError('Failed to submit survey. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const triggerFlowUpdate = async () => {
-    try {
-      // This would typically call your backend to:
-      // 1. Update dashboard data
-      // 2. Update member data
-      // 3. Generate new insights
-      // 4. Send notifications to admins/managers
-      
-      console.log('Triggering flow update for survey completion');
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-    } catch (error) {
-      console.error('Error triggering flow update:', error);
-    }
-  };
-
-  const renderQuestion = (question) => {
-    const currentAnswer = responses[question.id] || '';
-
-    switch (question.question_type) {
-      case 'rating':
-        return (
-          <div className="space-y-4">
-            <p className="text-lg text-primary mb-4">{question.question_text}</p>
-            <div className="flex justify-center gap-2">
-              {[1, 2, 3, 4, 5].map((rating) => (
-                <button
-                  key={rating}
-                  onClick={() => handleAnswerChange(question.id, rating)}
-                  className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all ${
-                    currentAnswer === rating
-                      ? 'bg-mint text-white'
-                      : 'bg-white/10 text-white/60 hover:bg-white/20'
-                  }`}
-                >
-                  {rating}
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-between text-xs text-secondary">
-              <span>Poor</span>
-              <span>Excellent</span>
-            </div>
-          </div>
-        );
-
-      case 'text':
-        return (
-          <div className="space-y-4">
-            <p className="text-lg text-primary mb-4">{question.question_text}</p>
-            <textarea
-              value={currentAnswer}
-              onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-              className="glass-textarea w-full h-32"
-              placeholder="Share your thoughts..."
-            />
-          </div>
-        );
-
-      case 'multiple_choice':
-        return (
-          <div className="space-y-4">
-            <p className="text-lg text-primary mb-4">{question.question_text}</p>
-            <div className="space-y-3">
-              {question.options?.map((option, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleAnswerChange(question.id, option)}
-                  className={`w-full p-4 rounded-lg text-left transition-all ${
-                    currentAnswer === option
-                      ? 'bg-mint text-white'
-                      : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-
-      default:
-        return (
-          <div className="space-y-4">
-            <p className="text-lg text-primary mb-4">{question.question_text}</p>
-            <input
-              type="text"
-              value={currentAnswer}
-              onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-              className="glass-input w-full"
-              placeholder="Your answer..."
-            />
-          </div>
-        );
-    }
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-bg flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 bg-mint-accent rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <div className="w-8 h-8 border-4 border-mint-dark border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <p className="text-white">Loading survey...</p>
+          <Loader2 className="w-8 h-8 text-white animate-spin mx-auto mb-4" />
+          <p className="text-white/70">Loading survey...</p>
         </div>
       </div>
     );
   }
 
-  if (!surveyData) {
+  if (error) {
     return (
-      <div className="min-h-screen bg-gradient-bg flex items-center justify-center">
-        <div className="glass-card p-8 text-center max-w-md">
-          <div className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-white text-2xl">⚠️</span>
-          </div>
-          <h1 className="text-2xl font-bold text-primary mb-2">Survey Not Found</h1>
-          <p className="text-secondary mb-4">This survey may have expired or been removed.</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <div className="text-center max-w-md mx-4">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-white mb-2">Error</h2>
+          <p className="text-white/70 mb-4">{error}</p>
           <button
-            onClick={() => navigate('/')}
-            className="btn-primary"
+            onClick={() => window.history.back()}
+            className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all duration-200"
           >
-            Go Home
+            Go Back
           </button>
         </div>
       </div>
     );
   }
 
-  if (showThankYou) {
+  if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-bg flex items-center justify-center p-4">
-        <div className="glass-card p-8 max-w-md w-full text-center">
-          {/* Success Animation */}
-          <div className="w-20 h-20 bg-gradient-to-r from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-            <CheckCircle size={40} className="text-white" />
-          </div>
-
-          <h1 className="text-3xl font-bold text-primary mb-4">Thank You! 🎉</h1>
-          <p className="text-secondary text-lg mb-6">
-            Your survey response has been submitted successfully.
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <div className="text-center max-w-md mx-4">
+          <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-semibold text-white mb-2">Survey Completed!</h2>
+          <p className="text-white/70 mb-6">
+            Thank you for completing the survey. Your responses have been analyzed and saved.
           </p>
-
-          {/* Success Details */}
-          <div className="space-y-4 mb-8">
-            <div className="flex items-center justify-center gap-3 p-3 bg-green-50 rounded-lg">
-              <Heart size={20} className="text-green-600" />
-              <span className="text-sm text-primary">Response recorded</span>
-            </div>
-            
-            <div className="flex items-center justify-center gap-3 p-3 bg-blue-50 rounded-lg">
-              <TrendingUp size={20} className="text-blue-600" />
-              <span className="text-sm text-primary">Dashboard updated</span>
-            </div>
-            
-            <div className="flex items-center justify-center gap-3 p-3 bg-purple-50 rounded-lg">
-              <Users size={20} className="text-purple-600" />
-              <span className="text-sm text-primary">Team insights generated</span>
-            </div>
-          </div>
-
-          {/* Next Steps */}
-          <div className="space-y-3">
-            <p className="text-sm text-secondary">
-              Your feedback helps improve team performance and collaboration.
-            </p>
-            <p className="text-xs text-muted">
-              You'll receive new surveys when they're available.
-            </p>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3 mt-8">
-            <button
-              onClick={() => window.close()}
-              className="btn-secondary flex-1 flex items-center justify-center gap-2"
-            >
-              <Home size={16} />
-              Close
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="btn-primary flex-1 flex items-center justify-center gap-2"
-            >
-              <Mail size={16} />
-              Contact Support
-            </button>
-          </div>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-3 bg-gradient-to-r from-green-400 to-emerald-500 text-gray-900 rounded-lg font-medium hover:from-green-500 hover:to-emerald-600 transition-all duration-200"
+          >
+            Return to Dashboard
+          </button>
         </div>
       </div>
     );
   }
-
-  const currentQuestionData = surveyData.questions[currentQuestion];
-  const hasAnswered = responses[currentQuestionData?.id];
-  const isLastQuestion = currentQuestion === surveyData.questions.length - 1;
 
   return (
-    <div className="min-h-screen bg-gradient-bg flex items-center justify-center p-4">
-      <div className="glass-card p-8 max-w-2xl w-full">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-6">
+      <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-primary mb-2">{surveyData.title}</h1>
-          <p className="text-secondary">{surveyData.description}</p>
-        </div>
-
-        {/* Progress Bar */}
         <div className="mb-8">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-secondary">Progress</span>
-            <span className="text-sm font-medium text-primary">
-              {currentQuestion + 1} of {surveyData.questions.length}
-            </span>
+          <div className="flex items-center gap-4 mb-4">
+            <button
+              onClick={() => window.history.back()}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all duration-200"
+            >
+              <ArrowLeft size={20} className="text-white" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-white">{survey?.title}</h1>
+              <p className="text-white/70">Complete this survey to provide feedback</p>
+            </div>
           </div>
-          <div className="w-full bg-white/10 rounded-full h-2">
-            <div 
-              className="bg-gradient-to-r from-mint to-mint-dark h-2 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
+          
+          {member && (
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">
+                    {member.name?.charAt(0).toUpperCase() || 'M'}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-white font-medium">{member.name}</p>
+                  <p className="text-white/60 text-sm">{member.role} • {member.department}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Question */}
-        <div className="mb-8">
-          {currentQuestionData && renderQuestion(currentQuestionData)}
+        {/* Survey Questions */}
+        <div className="space-y-6">
+          {questions.map((question, index) => (
+            <div key={question.id} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg p-6">
+              <div className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-white/50 text-sm">Question {index + 1}</span>
+                  {question.required && (
+                    <span className="text-red-400 text-xs">* Required</span>
+                  )}
+                </div>
+                <h3 className="text-lg font-medium text-white mb-2">{question.question_text}</h3>
+                {question.description && (
+                  <p className="text-white/60 text-sm">{question.description}</p>
+                )}
+              </div>
+
+              {/* Question Input */}
+              {question.type === 'text' && (
+                <textarea
+                  value={responses[question.id] || ''}
+                  onChange={(e) => handleResponseChange(question.id, e.target.value)}
+                  placeholder="Enter your response..."
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:border-blue-400 resize-none"
+                  rows={4}
+                />
+              )}
+
+              {question.type === 'rating' && (
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((rating) => (
+                    <button
+                      key={rating}
+                      onClick={() => handleResponseChange(question.id, rating.toString())}
+                      className={`p-3 rounded-lg transition-all duration-200 ${
+                        responses[question.id] === rating.toString()
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                      }`}
+                    >
+                      <Star size={20} className={responses[question.id] === rating.toString() ? 'fill-current' : ''} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {question.type === 'yes_no' && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleResponseChange(question.id, 'Yes')}
+                    className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      responses[question.id] === 'Yes'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => handleResponseChange(question.id, 'No')}
+                    className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      responses[question.id] === 'No'
+                        ? 'bg-red-500 text-white'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20'
+                    }`}
+                  >
+                    No
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
-        {/* Navigation */}
-        <div className="flex justify-between items-center">
+        {/* Submit Button */}
+        <div className="mt-8">
           <button
-            onClick={handlePrevious}
-            disabled={currentQuestion === 0}
-            className={`btn-secondary flex items-center gap-2 ${
-              currentQuestion === 0 ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-          >
-            <ArrowRight size={16} className="rotate-180" />
-            Previous
-          </button>
-
-          <div className="flex items-center gap-2">
-            {currentQuestion > 0 && (
-              <span className="text-xs text-secondary">
-                {Object.keys(responses).length} answered
-              </span>
-            )}
-          </div>
-
-          <button
-            onClick={handleNext}
-            disabled={!hasAnswered || submitting}
-            className={`btn-primary flex items-center gap-2 ${
-              !hasAnswered || submitting ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
+            onClick={submitSurvey}
+            disabled={submitting}
+            className="w-full bg-gradient-to-r from-blue-400 to-blue-500 text-white px-6 py-4 rounded-lg font-medium hover:from-blue-500 hover:to-blue-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {submitting ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <Loader2 size={20} className="animate-spin" />
                 Submitting...
-              </>
-            ) : isLastQuestion ? (
-              <>
-                <CheckCircle size={16} />
-                Submit Survey
               </>
             ) : (
               <>
-                Next
-                <ArrowRight size={16} />
+                <Send size={20} />
+                Submit Survey
               </>
             )}
           </button>
-        </div>
-
-        {/* Survey Info */}
-        <div className="mt-8 pt-6 border-t border-white/10">
-          <div className="flex items-center justify-center gap-4 text-xs text-secondary">
-            <div className="flex items-center gap-1">
-              <Star size={12} />
-              <span>Anonymous</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Users size={12} />
-              <span>Team Feedback</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <TrendingUp size={12} />
-              <span>Performance Insights</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>

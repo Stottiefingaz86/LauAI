@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService, billingService } from '../lib/supabaseService';
+import { emailService } from '../lib/emailService'; // Added import for emailService
 
 // Production URL configuration
 const PRODUCTION_URL = 'https://lau-r6el3zy53-chris-projects-e99bc8f6.vercel.app';
@@ -55,7 +56,15 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
+    // Add timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.log('Loading timeout reached, setting loading to false');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+
     loadUser();
+
+    return () => clearTimeout(timeoutId);
 
     // Listen for auth changes
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
@@ -86,7 +95,9 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const loadBillingInfo = async (userId) => {
@@ -218,8 +229,35 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
-    const { error } = await authService.signOut();
-    return { error };
+    try {
+      console.log('Starting sign out process...');
+      const { error } = await authService.signOut();
+      
+      if (error) {
+        console.error('Error during sign out:', error);
+        return { error };
+      }
+      
+      // Clear user state immediately
+      setUser(null);
+      setBillingInfo({
+        plan: 'basic',
+        seats: 1,
+        usedSeats: 1,
+        totalSeats: 1,
+        monthlyCost: 20,
+        nextBillingDate: null,
+        inviteLink: '',
+        trialDaysLeft: 14,
+        subscriptionStatus: 'trial'
+      });
+      
+      console.log('Sign out successful, user state cleared');
+      return { error: null };
+    } catch (error) {
+      console.error('Unexpected error during sign out:', error);
+      return { error };
+    }
   };
 
   const inviteUser = async (email, role) => {
@@ -231,14 +269,32 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
+      // Create invitation record
       const { data, error } = await authService.inviteUser(email, role, user.email);
       
       if (!error) {
-        // Update used seats count
-        setBillingInfo(prev => ({
-          ...prev,
-          usedSeats: prev.usedSeats + 1
-        }));
+        // Generate invite link
+        const inviteLink = emailService.generateInviteLink(data.id);
+        
+        // Send invitation email
+        const emailResult = await emailService.sendInvitationEmail(
+          email, 
+          role, 
+          user.email, 
+          inviteLink
+        );
+
+        if (emailResult.success) {
+          // Update used seats count
+          setBillingInfo(prev => ({
+            ...prev,
+            usedSeats: prev.usedSeats + 1
+          }));
+          
+          return { data, error: null };
+        } else {
+          return { error: { message: 'Failed to send invitation email' } };
+        }
       }
       
       return { data, error };
@@ -309,11 +365,18 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Role-based access control
-  const isAdmin = user?.user_metadata?.role === 'admin';
+  const isMasterAccount = user?.email === 'christopher.hunt86@gmail.com';
+  const isAdmin = user?.user_metadata?.role === 'admin' || isMasterAccount;
   const isManager = user?.user_metadata?.role === 'manager';
   const isLeader = user?.user_metadata?.role === 'leader';
   const isMember = user?.user_metadata?.role === 'member';
-  const isMasterAccount = user?.email === 'christopher.hunt86@gmail.com';
+
+  // Debug role detection
+  console.log('AuthContext - user:', user);
+  console.log('AuthContext - user_metadata:', user?.user_metadata);
+  console.log('AuthContext - isMasterAccount:', isMasterAccount);
+  console.log('AuthContext - isAdmin:', isAdmin);
+  console.log('AuthContext - user role from metadata:', user?.user_metadata?.role);
 
   const value = {
     user,

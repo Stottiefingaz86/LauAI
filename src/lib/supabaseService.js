@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { paymentService, plans } from './paymentService'
+import { emailService } from './emailService';
 
 // Production URL configuration
 const PRODUCTION_URL = 'https://lau-r6el3zy53-chris-projects-e99bc8f6.vercel.app';
@@ -104,7 +105,29 @@ export const authService = {
   },
 
   async signOut() {
-    return await supabase.auth.signOut()
+    try {
+      console.log('authService: Starting sign out...');
+      
+      // Clear any stored auth tokens
+      localStorage.removeItem('supabase.auth.token');
+      localStorage.removeItem('sb-REACT_APP_SUPABASE_URL-auth-token');
+      sessionStorage.removeItem('supabase.auth.token');
+      sessionStorage.removeItem('sb-REACT_APP_SUPABASE_URL-auth-token');
+      
+      // Call Supabase sign out
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('authService: Supabase sign out error:', error);
+        return { error };
+      }
+      
+      console.log('authService: Sign out successful');
+      return { error: null };
+    } catch (error) {
+      console.error('authService: Unexpected error during sign out:', error);
+      return { error };
+    }
   },
 
   onAuthStateChange(callback) {
@@ -415,6 +438,46 @@ export const teamService = {
       .eq('id', teamId)
 
     return { data, error }
+  },
+
+  async getTeamMembers() {
+    const { data, error } = await supabase
+      .from('members')
+      .select(`
+        *,
+        team:teams(name)
+      `)
+      .order('created_at', { ascending: false })
+
+    return { data, error }
+  },
+
+  async addTeamMember(memberData) {
+    const { data, error } = await supabase
+      .from('members')
+      .insert(memberData)
+      .select()
+      .single()
+
+    return { data, error }
+  },
+
+  async removeTeamMember(memberId) {
+    const { data, error } = await supabase
+      .from('members')
+      .delete()
+      .eq('id', memberId)
+
+    return { data, error }
+  },
+
+  async removeTeamMembersByTeamId(teamId) {
+    const { data, error } = await supabase
+      .from('members')
+      .delete()
+      .eq('team_id', teamId)
+
+    return { data, error }
   }
 }
 
@@ -433,20 +496,61 @@ export const memberService = {
   },
 
   async getMemberById(memberId) {
-    const { data, error } = await supabase
+    // First get the basic member data
+    const { data: member, error: memberError } = await supabase
       .from('members')
-      .select(`
-        *,
-        team:teams(name),
-        signals:signals(*),
-        insights:insights(*),
-        meetings:meetings(*),
-        survey_responses:survey_responses(*)
-      `)
+      .select('*')
       .eq('id', memberId)
-      .single()
+      .single();
 
-    return { data, error }
+    if (memberError) {
+      return { data: null, error: memberError };
+    }
+
+    // Load related data
+    const [insightsData, signalsData, meetingsData, surveyResponsesData] = await Promise.all([
+      // Get insights for this member
+      supabase
+        .from('insights')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('created_at', { ascending: false }),
+      
+      // Get signals for this member
+      supabase
+        .from('signals')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('created_at', { ascending: false }),
+      
+      // Get meetings for this member
+      supabase
+        .from('meetings')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('created_at', { ascending: false }),
+      
+      // Get survey responses for this member
+      supabase
+        .from('survey_responses')
+        .select(`
+          *,
+          survey:surveys(title, description)
+        `)
+        .eq('member_id', memberId)
+        .order('created_at', { ascending: false })
+    ]);
+
+    // Combine all data
+    const enrichedMember = {
+      ...member,
+      insights: insightsData.data || [],
+      signals: signalsData.data || [],
+      meetings: meetingsData.data || [],
+      survey_responses: surveyResponsesData.data || []
+    };
+
+    return { data: enrichedMember, error: null };
   },
 
   async createMember(memberData) {
@@ -492,14 +596,95 @@ export const surveyService = {
   },
 
   async getSurveyById(surveyId) {
+    try {
+      // First get the survey
+      const { data: survey, error: surveyError } = await supabase
+        .from('surveys')
+        .select('*')
+        .eq('id', surveyId)
+        .single();
+
+      if (surveyError) {
+        console.error('Error fetching survey:', surveyError);
+        return { data: null, error: surveyError };
+      }
+
+      if (!survey) {
+        console.error('Survey not found:', surveyId);
+        return { data: null, error: { message: 'Survey not found' } };
+      }
+
+      // Then get the questions separately to avoid join issues
+      const { data: questions, error: questionsError } = await supabase
+        .from('survey_questions')
+        .select('*')
+        .eq('survey_id', surveyId)
+        .order('order_index', { ascending: true });
+
+      if (questionsError) {
+        console.error('Error fetching survey questions:', questionsError);
+        // Continue with empty questions array
+      }
+
+      // Combine the data
+      const surveyWithQuestions = {
+        ...survey,
+        questions: questions || []
+      };
+
+      return { data: surveyWithQuestions, error: null };
+    } catch (error) {
+      console.error('Error in getSurveyById:', error);
+      return { data: null, error };
+    }
+  },
+
+  async createSurvey(surveyData) {
     const { data, error } = await supabase
       .from('surveys')
-      .select(`
-        *,
-        questions:survey_questions(*)
-      `)
-      .eq('id', surveyId)
+      .insert(surveyData)
+      .select()
       .single()
+
+    return { data, error }
+  },
+
+  async updateSurvey(surveyId, updates) {
+    const { data, error } = await supabase
+      .from('surveys')
+      .update(updates)
+      .eq('id', surveyId)
+      .select()
+      .single()
+
+    return { data, error }
+  },
+
+  async deleteSurvey(surveyId) {
+    const { data, error } = await supabase
+      .from('surveys')
+      .delete()
+      .eq('id', surveyId)
+
+    return { data, error }
+  },
+
+  async createSurveyQuestion(questionData) {
+    const { data, error } = await supabase
+      .from('survey_questions')
+      .insert(questionData)
+      .select()
+      .single()
+
+    return { data, error }
+  },
+
+  async getSurveyQuestions(surveyId) {
+    const { data, error } = await supabase
+      .from('survey_questions')
+      .select('*')
+      .eq('survey_id', surveyId)
+      .order('order_index', { ascending: true })
 
     return { data, error }
   },
@@ -512,7 +697,356 @@ export const surveyService = {
       .single()
 
     return { data, error }
+  },
+
+  async getSurveyResponses(surveyId) {
+    const { data, error } = await supabase
+      .from('survey_responses')
+      .select(`
+        *,
+        member:members(name, email, role),
+        survey:surveys(title)
+      `)
+      .eq('survey_id', surveyId)
+      .order('created_at', { ascending: false })
+
+    return { data, error }
+  },
+
+  async getMemberSurveyResponses(memberId) {
+    const { data, error } = await supabase
+      .from('survey_responses')
+      .select(`
+        *,
+        survey:surveys(title, description)
+      `)
+      .eq('member_id', memberId)
+      .order('created_at', { ascending: false })
+
+    return { data, error }
+  },
+
+  async sendSurveyEmail(surveyId, memberIds) {
+    try {
+      console.log('Starting sendSurveyEmail with:', { surveyId, memberIds });
+      
+      // First, verify the survey exists
+      const { data: survey, error: surveyError } = await supabase
+        .from('surveys')
+        .select('*')
+        .eq('id', surveyId)
+        .single();
+
+      if (surveyError || !survey) {
+        console.error('Survey not found:', surveyId, surveyError);
+        return { data: null, error: { message: 'Survey not found' } };
+      }
+
+      console.log('Survey found:', survey);
+
+      // Get the member details
+      const { data: members, error: membersError } = await supabase
+        .from('members')
+        .select('id, email, name')
+        .in('id', memberIds);
+
+      if (membersError) {
+        console.error('Error fetching members:', membersError);
+        return { data: null, error: membersError };
+      }
+
+      if (!members || members.length === 0) {
+        console.error('No members found for IDs:', memberIds);
+        return { data: null, error: { message: 'No members found' } };
+      }
+
+      console.log('Members found:', members);
+
+      // Create survey invitations for tracking
+      const invitations = members.map(member => ({
+        survey_id: surveyId,
+        member_id: member.id,
+        email: member.email,
+        status: 'sent',
+        sent_at: new Date().toISOString()
+      }));
+
+      console.log('Creating invitations:', invitations);
+
+      // Try to insert into survey_invitations table
+      let surveyInvitationsResult = null;
+      try {
+        const { data: invitationsData, error: invitationsError } = await supabase
+          .from('survey_invitations')
+          .insert(invitations)
+          .select();
+
+        if (invitationsError) {
+          console.error('Error creating survey invitations:', invitationsError);
+          // Continue with fallback tracking
+        } else {
+          surveyInvitationsResult = invitationsData;
+          console.log('Survey invitations created successfully:', invitationsData);
+        }
+      } catch (error) {
+        console.error('Exception creating survey invitations:', error);
+        // Continue with fallback tracking
+      }
+
+      // Fallback: Create tracking records in a different table or log
+      if (!surveyInvitationsResult) {
+        console.log('Using fallback tracking system...');
+        
+        // Try to create a simple tracking record in the signals table
+        const trackingSignals = members.map(member => ({
+          user_id: member.id,
+          signal_type: 'survey_sent',
+          value: 1,
+          source_id: surveyId,
+          source_type: 'survey',
+          notes: `Survey "${survey.title}" sent to ${member.name} (${member.email})`,
+          created_at: new Date().toISOString()
+        }));
+
+        try {
+          const { data: signalsData, error: signalsError } = await supabase
+            .from('signals')
+            .insert(trackingSignals)
+            .select();
+
+          if (signalsError) {
+            console.error('Error creating tracking signals:', signalsError);
+          } else {
+            console.log('Tracking signals created successfully:', signalsData);
+          }
+        } catch (error) {
+          console.error('Exception creating tracking signals:', error);
+        }
+      }
+
+      // Send actual emails
+      const emailPromises = members.map(async (member) => {
+        try {
+          const surveyUrl = `${window.location.origin}/survey/${surveyId}?member=${member.id}`;
+          
+          const emailResult = await emailService.sendSurveyInvitationEmail(
+            member.email,
+            survey.title,
+            surveyUrl,
+            member.name
+          );
+
+          console.log(`Email result for ${member.email}:`, emailResult);
+          return { member, emailResult };
+        } catch (error) {
+          console.error(`Error sending email to ${member.email}:`, error);
+          return { member, emailResult: { success: false, error: error.message } };
+        }
+      });
+
+      const emailResults = await Promise.all(emailPromises);
+      const successfulEmails = emailResults.filter(result => result.emailResult.success);
+      const failedEmails = emailResults.filter(result => !result.emailResult.success);
+
+      console.log('Email sending results:', {
+        total: emailResults.length,
+        successful: successfulEmails.length,
+        failed: failedEmails.length,
+        failedEmails: failedEmails.map(r => ({ email: r.member.email, error: r.emailResult.error }))
+      });
+
+      return { 
+        data: { 
+          message: `Survey sent successfully to ${successfulEmails.length} members`,
+          members_sent: successfulEmails.length,
+          survey_title: survey.title,
+          successful_emails: successfulEmails.map(r => r.member.email),
+          failed_emails: failedEmails.map(r => ({ email: r.member.email, error: r.emailResult.error }))
+        }, 
+        error: failedEmails.length > 0 ? { message: `Failed to send to ${failedEmails.length} members` } : null
+      };
+    } catch (error) {
+      console.error('Error in sendSurveyEmail:', error);
+      return { data: null, error };
+    }
+  },
+
+  async getSurveyInvitations(surveyId) {
+    const { data, error } = await supabase
+      .from('survey_invitations')
+      .select('*')
+      .eq('survey_id', surveyId)
+
+    return { data, error }
+  },
+
+
+
+  async analyzeSurveyResponse(responseId) {
+    // This would trigger AI analysis of the survey response
+    // For now, we'll create a placeholder insight
+    const { data: response } = await supabase
+      .from('survey_responses')
+      .select(`
+        *,
+        member:members(name, email, role),
+        survey:surveys(title)
+      `)
+      .eq('id', responseId)
+      .single();
+
+    if (response) {
+      // Analyze responses for performance indicators
+      const analysis = analyzePerformanceFromResponses(response.responses);
+      
+      // Create insight based on survey response
+      const insightData = {
+        member_id: response.member_id,
+        source: 'survey',
+        source_id: responseId,
+        title: `Survey Response Analysis - ${response.survey.title}`,
+        description: `Performance assessment for ${response.member.name}: ${analysis.summary}`,
+        severity: analysis.severity,
+        insight_type: 'survey_feedback',
+        action_items: analysis.actionItems,
+        performance_color: analysis.color,
+        created_at: new Date().toISOString()
+      };
+
+      const { data: insight, error: insightError } = await insightService.createInsight(insightData);
+      
+      if (!insightError) {
+        // Update member's signals based on survey response
+        const signalData = {
+          member_id: response.member_id,
+          signal_type: 'survey_satisfaction',
+          value: analysis.signalValue,
+          source: 'survey',
+          source_id: responseId,
+          performance_color: analysis.color,
+          created_at: new Date().toISOString()
+        };
+
+        await signalService.createSignal(signalData);
+      }
+
+      return { data: insight, error: insightError };
+    }
+
+    return { data: null, error: 'Response not found' };
+  },
+
+  async getMemberById(memberId) {
+    // Simple member lookup for survey completion
+    const { data, error } = await supabase
+      .from('members')
+      .select('*')
+      .eq('id', memberId)
+      .single();
+
+    return { data, error };
   }
+}
+
+// Helper function for analyzing survey responses
+function analyzePerformanceFromResponses(responses) {
+  // Simple analysis based on response patterns
+  let positiveCount = 0;
+  let neutralCount = 0;
+  let negativeCount = 0;
+  let totalResponses = 0;
+  const actionItems = [];
+
+  // Analyze each response
+  Object.entries(responses).forEach(([questionId, answer]) => {
+    totalResponses++;
+    
+    // Simple keyword analysis for text responses
+    if (typeof answer === 'string') {
+      const lowerAnswer = answer.toLowerCase();
+      
+      // Positive indicators
+      if (lowerAnswer.includes('proud') || lowerAnswer.includes('achievement') || 
+          lowerAnswer.includes('value') || lowerAnswer.includes('enjoy') ||
+          lowerAnswer.includes('improved') || lowerAnswer.includes('learned')) {
+        positiveCount++;
+      }
+      // Negative indicators
+      else if (lowerAnswer.includes('struggle') || lowerAnswer.includes('difficult') ||
+               lowerAnswer.includes('draining') || lowerAnswer.includes('exhausted') ||
+               lowerAnswer.includes('challenge') || lowerAnswer.includes('hard')) {
+        negativeCount++;
+        actionItems.push(`Address concerns in: ${questionId}`);
+      }
+      else {
+        neutralCount++;
+      }
+    }
+    // Analyze rating responses
+    else if (typeof answer === 'number' || !isNaN(answer)) {
+      const rating = parseInt(answer);
+      if (rating >= 7) positiveCount++;
+      else if (rating <= 4) negativeCount++;
+      else neutralCount++;
+    }
+    // Analyze yes/no responses
+    else if (answer === 'Yes') {
+      positiveCount++;
+    } else if (answer === 'No') {
+      negativeCount++;
+      actionItems.push(`Follow up on: ${questionId}`);
+    }
+  });
+
+  // Calculate performance metrics
+  const positiveRatio = positiveCount / totalResponses;
+  const negativeRatio = negativeCount / totalResponses;
+
+  // Determine color and severity
+  let color, severity, signalValue, summary;
+  
+  if (positiveRatio >= 0.6 && negativeRatio <= 0.2) {
+    color = 'green';
+    severity = 'low';
+    signalValue = 8;
+    summary = 'Strong performance with clear progress and positive engagement';
+  } else if (positiveRatio >= 0.4 && negativeRatio <= 0.3) {
+    color = 'yellow';
+    severity = 'medium';
+    signalValue = 6;
+    summary = 'Good performance with some areas needing attention';
+  } else {
+    color = 'red';
+    severity = 'high';
+    signalValue = 4;
+    summary = 'Performance concerns identified, requires immediate attention';
+  }
+
+  // Add default action items if none generated
+  if (actionItems.length === 0) {
+    if (color === 'green') {
+      actionItems.push('Continue current support and development');
+      actionItems.push('Document best practices for team sharing');
+    } else if (color === 'yellow') {
+      actionItems.push('Schedule follow-up 1:1 to discuss concerns');
+      actionItems.push('Provide additional support and resources');
+    } else {
+      actionItems.push('Schedule urgent 1:1 meeting');
+      actionItems.push('Develop improvement plan with clear milestones');
+      actionItems.push('Consider additional support or role adjustment');
+    }
+  }
+
+  return {
+    color,
+    severity,
+    signalValue,
+    summary,
+    actionItems,
+    positiveCount,
+    negativeCount,
+    neutralCount
+  };
 }
 
 // Signal and Insight Management
@@ -618,3 +1152,229 @@ export const meetingService = {
     return { data, error }
   }
 } 
+
+// Workflow Service for automated processes
+const workflowService = {
+  // Automated survey scheduling
+  async scheduleRecurringSurveys() {
+    try {
+      const { data: surveys, error } = await supabase
+        .from('surveys')
+        .select('*')
+        .eq('status', 'active')
+        .eq('is_recurring', true);
+      
+      if (error) throw error;
+      
+      // Process recurring surveys
+      for (const survey of surveys || []) {
+        const shouldSend = this.shouldSendRecurringSurvey(survey);
+        if (shouldSend) {
+          await this.sendRecurringSurvey(survey);
+        }
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error scheduling recurring surveys:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  shouldSendRecurringSurvey(survey) {
+    const now = new Date();
+    const lastSent = new Date(survey.last_sent || 0);
+    const interval = survey.recurring_interval || 7; // days
+    
+    return (now - lastSent) >= (interval * 24 * 60 * 60 * 1000);
+  },
+
+  async sendRecurringSurvey(survey) {
+    try {
+      // Get team members
+      const { data: members, error } = await supabase
+        .from('members')
+        .select('*');
+      
+      if (error) throw error;
+      
+      // Send to all members
+      for (const member of members || []) {
+        await emailService.sendSurveyInvitationEmail(
+          member.email,
+          survey.title,
+          `${window.location.origin}/survey/${survey.id}/member/${member.id}`,
+          member.name
+        );
+      }
+      
+      // Update last sent date
+      await supabase
+        .from('surveys')
+        .update({ last_sent: new Date().toISOString() })
+        .eq('id', survey.id);
+      
+    } catch (error) {
+      console.error('Error sending recurring survey:', error);
+    }
+  },
+
+  // Performance monitoring and alerts
+  async checkPerformanceAlerts() {
+    try {
+      const { data: members, error } = await supabase
+        .from('members')
+        .select('*');
+      
+      if (error) throw error;
+      
+      const alerts = [];
+      
+      for (const member of members || []) {
+        const signals = member.signals || 0;
+        
+        if (signals < 3) {
+          alerts.push({
+            type: 'low_performance',
+            member_id: member.id,
+            member_name: member.name,
+            message: `${member.name} has low performance signals (${signals}/10)`,
+            severity: 'high'
+          });
+        }
+        
+        if (signals === 0) {
+          alerts.push({
+            type: 'no_activity',
+            member_id: member.id,
+            member_name: member.name,
+            message: `${member.name} has no recent activity`,
+            severity: 'critical'
+          });
+        }
+      }
+      
+      // Store alerts
+      if (alerts.length > 0) {
+        await supabase
+          .from('alerts')
+          .insert(alerts);
+      }
+      
+      return { success: true, alerts };
+    } catch (error) {
+      console.error('Error checking performance alerts:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Automated 1:1 reminders
+  async sendOneOnOneReminders() {
+    try {
+      const { data: members, error } = await supabase
+        .from('members')
+        .select('*');
+      
+      if (error) throw error;
+      
+      for (const member of members || []) {
+        const lastMeeting = new Date(member.last_meeting || 0);
+        const daysSinceLastMeeting = (new Date() - lastMeeting) / (1000 * 60 * 60 * 24);
+        
+        if (daysSinceLastMeeting > 14) { // 2 weeks
+          await emailService.sendOneOnOneReminder(
+            member.email,
+            member.name
+          );
+        }
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error sending 1:1 reminders:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Team health monitoring
+  async analyzeTeamHealth() {
+    try {
+      const { data: members, error } = await supabase
+        .from('members')
+        .select('*');
+      
+      if (error) throw error;
+      
+      const teamHealth = {
+        total_members: members?.length || 0,
+        active_members: members?.filter(m => (m.signals || 0) > 0).length || 0,
+        high_performers: members?.filter(m => (m.signals || 0) >= 8).length || 0,
+        needs_attention: members?.filter(m => (m.signals || 0) < 5).length || 0,
+        average_signals: members?.reduce((sum, m) => sum + (m.signals || 0), 0) / (members?.length || 1) || 0
+      };
+      
+      // Store team health data
+      await supabase
+        .from('team_health')
+        .upsert({
+          id: 1,
+          data: teamHealth,
+          updated_at: new Date().toISOString()
+        });
+      
+      return { success: true, teamHealth };
+    } catch (error) {
+      console.error('Error analyzing team health:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Automated insights generation
+  async generateInsights() {
+    try {
+      const { data: members, error } = await supabase
+        .from('members')
+        .select('*');
+      
+      if (error) throw error;
+      
+      const insights = [];
+      
+      for (const member of members || []) {
+        const signals = member.signals || 0;
+        
+        if (signals >= 8) {
+          insights.push({
+            type: 'high_performer',
+            member_id: member.id,
+            member_name: member.name,
+            message: `${member.name} is performing exceptionally well`,
+            recommendation: 'Consider recognition or promotion discussion'
+          });
+        }
+        
+        if (signals < 5 && signals > 0) {
+          insights.push({
+            type: 'needs_support',
+            member_id: member.id,
+            member_name: member.name,
+            message: `${member.name} may need additional support`,
+            recommendation: 'Schedule a 1:1 meeting to discuss challenges'
+          });
+        }
+      }
+      
+      // Store insights
+      if (insights.length > 0) {
+        await supabase
+          .from('insights')
+          .insert(insights);
+      }
+      
+      return { success: true, insights };
+    } catch (error) {
+      console.error('Error generating insights:', error);
+      return { success: false, error: error.message };
+    }
+  }
+}; 

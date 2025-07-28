@@ -5,63 +5,41 @@ import {
   Upload, 
   Share2
 } from 'lucide-react';
+import InviteModal from './InviteModal';
 
 const Dock = () => {
   const [hoveredIndex, setHoveredIndex] = useState(null);
   const [isVisible, setIsVisible] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const dockItems = [
     { 
       icon: <Plus className="w-5 h-5" />, 
       label: 'Add Team Member', 
       description: 'Add new team member to your organization',
-      onClick: () => window.location.href = '/app/teams',
+      onClick: () => window.location.href = '/teams',
       color: 'from-blue-400 to-cyan-400'
     },
     { 
       icon: <FileText className="w-5 h-5" />, 
       label: 'Create Survey', 
       description: 'Create a new team survey',
-      onClick: () => window.location.href = '/app/surveys',
+      onClick: () => window.location.href = '/surveys',
       color: 'from-green-400 to-emerald-400'
     },
     { 
       icon: <Upload className="w-5 h-5" />, 
       label: 'Upload 1:1', 
       description: 'Upload 1:1 meeting notes for analysis',
-      onClick: () => window.location.href = '/app/entry',
+      onClick: () => window.location.href = '/entry',
       color: 'from-purple-400 to-pink-400'
     },
     { 
       icon: <Share2 className="w-5 h-5" />, 
       label: 'Invite', 
       description: 'Invite team members to SignalOS',
-      onClick: async () => {
-        if (navigator.share) {
-          try {
-            await navigator.share({
-              title: 'Join SignalOS',
-              text: 'Join our team performance platform',
-              url: window.location.href
-            });
-          } catch (error) {
-            // User cancelled the share or other error occurred
-            // Don't show error for user cancellation
-            if (error.name !== 'AbortError') {
-              console.log('Share error:', error);
-            }
-          }
-        } else {
-          try {
-            await navigator.clipboard.writeText(window.location.href);
-            alert('Invite link copied to clipboard!');
-          } catch (error) {
-            console.log('Clipboard error:', error);
-            alert('Failed to copy link to clipboard');
-          }
-        }
-      },
+      onClick: () => setShowInviteModal(true),
       color: 'from-orange-400 to-red-400'
     }
   ];
@@ -185,6 +163,7 @@ const Dock = () => {
           })}
         </div>
       </div>
+      <InviteModal isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
     </div>
   );
 };

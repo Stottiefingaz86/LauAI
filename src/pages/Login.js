@@ -31,22 +31,9 @@ const Login = () => {
   const navigate = useNavigate();
   const { user, signIn, signUp } = useAuth();
 
-  // Redirect authenticated users
-  useEffect(() => {
-    if (user) {
-      const userRole = user?.user_metadata?.role || 'member';
-      if (userRole === 'member') {
-        navigate('/app/surveys');
-      } else {
-        navigate('/app/dashboard');
-      }
-    }
-  }, [user, navigate]);
 
-  // If user is already authenticated, don't render the form
-  if (user) {
-    return null;
-  }
+
+
 
   const validateForm = () => {
     const errors = {};
@@ -200,8 +187,8 @@ const Login = () => {
             setError(error.message || 'Failed to sign in. Please try again.');
           }
         } else {
-          console.log('Signin successful, navigating to dashboard');
-          navigate('/app/dashboard');
+          console.log('Signin successful, letting AuthContext handle navigation');
+          // Don't manually navigate - let AuthContext handle it
         }
       }
     } catch (err) {
@@ -245,7 +232,7 @@ const Login = () => {
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-6">
-              <Logo size="lg" />
+              <Logo size="xl" />
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">
               {isSignUp ? 'Create your account' : 'Welcome back'}

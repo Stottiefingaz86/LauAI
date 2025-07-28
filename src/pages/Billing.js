@@ -1,515 +1,521 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   CreditCard, 
+  Download, 
+  TrendingUp, 
   Users, 
-  Plus, 
-  Copy, 
-  Mail, 
-  CheckCircle, 
-  AlertCircle,
-  TrendingUp,
-  Euro,
+  HardDrive, 
+  FileText, 
   Calendar,
-  Settings,
-  Download,
-  Eye,
-  EyeOff,
+  CheckCircle,
+  X,
   ChevronRight,
   Star,
   Zap,
   Shield,
   Crown,
-  ExternalLink,
-  X
+  Building2,
+  BarChart3,
+  Activity,
+  Clock,
+  AlertCircle,
+  Info
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { useSearchParams } from 'react-router-dom';
 
 const Billing = () => {
-  const { user, isAdmin, isMasterAccount, billingInfo, inviteUser, upgradePlan, createPaymentSession, getPaymentSession } = useAuth();
-  const [searchParams] = useSearchParams();
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [showPlansModal, setShowPlansModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('member');
-  const [additionalSeats, setAdditionalSeats] = useState(1);
-  const [sendingInvite, setSendingInvite] = useState(false);
-  const [upgrading, setUpgrading] = useState(false);
-  const [showCardDetails, setShowCardDetails] = useState(false);
-  const [plans, setPlans] = useState([]);
-  const [loadingPlans, setLoadingPlans] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState(null);
+  const { user } = useAuth();
+  const [currentPlan, setCurrentPlan] = useState('basic');
+  const [usage, setUsage] = useState({
+    members: 0,
+    storage: 0,
+    surveys: 0,
+    meetings: 0
+  });
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Check for payment success/failure from URL params
   useEffect(() => {
-    const success = searchParams.get('success');
-    const canceled = searchParams.get('canceled');
-    const sessionId = searchParams.get('session_id');
+    loadBillingData();
+  }, []);
 
-    if (success === 'true' && sessionId) {
-      // Handle successful payment
-      handlePaymentSuccess(sessionId);
-    } else if (canceled === 'true') {
-      // Handle canceled payment
-      console.log('Payment was canceled');
-    }
-  }, [searchParams]);
-
-  const handlePaymentSuccess = async (sessionId) => {
+  const loadBillingData = async () => {
     try {
-      const { data, error } = await getPaymentSession(sessionId);
-      if (!error && data?.status === 'completed') {
-        // Update billing info and show success message
-        console.log('Payment successful:', data);
-        // You could add a toast notification here
-      }
-    } catch (error) {
-      console.error('Error handling payment success:', error);
-    }
-  };
-
-  const handleInviteUser = async () => {
-    if (!inviteEmail.trim()) return;
-
-    setSendingInvite(true);
-    try {
-      const { error } = await inviteUser(inviteEmail, inviteRole);
-      if (error) {
-        console.error('Error inviting user:', error);
-        // You could add a toast notification here
-      } else {
-        setInviteEmail('');
-        setInviteRole('member');
-        setShowInviteModal(false);
-        // You could add a success notification here
-      }
-    } catch (error) {
-      console.error('Error inviting user:', error);
-    } finally {
-      setSendingInvite(false);
-    }
-  };
-
-  const handleUpgradePlan = async () => {
-    if (!selectedPlan) return;
-
-    setUpgrading(true);
-    try {
-      const planData = {
-        userId: user.id,
-        customerEmail: user.email,
-        plan: selectedPlan.id,
-        seats: selectedPlan.seats,
-        amount: selectedPlan.price * 100, // Convert to cents
+      setLoading(true);
+      
+      // Import supabase client
+      const { supabase } = await import('../lib/supabase');
+      
+      // Load real usage data from database
+      const [membersResult, surveysResult, meetingsResult, billingResult] = await Promise.all([
+        supabase.from('members').select('id').count(),
+        supabase.from('surveys').select('id').count(),
+        supabase.from('meetings').select('id').count(),
+        supabase.from('billing_info').select('*').single()
+      ]);
+      
+      // Calculate real usage
+      const realUsage = {
+        members: membersResult.count || 0,
+        storage: calculateStorageUsage(membersResult.count || 0), // Calculate based on members
+        surveys: surveysResult.count || 0,
+        meetings: meetingsResult.count || 0
       };
+      
+      setUsage(realUsage);
+      
+      // Set current plan from database or default to basic
+      if (billingResult.data) {
+        setCurrentPlan(billingResult.data.plan || 'basic');
+      }
+      
+      // Load real invoices from payment_sessions
+      const { data: paymentSessions } = await supabase
+        .from('payment_sessions')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      const realInvoices = paymentSessions?.map(session => ({
+        id: session.id,
+        date: new Date(session.created_at).toISOString().split('T')[0],
+        amount: session.amount || 0,
+        status: session.status,
+        description: `Payment - ${session.status}`
+      })) || [];
+      
+      setInvoices(realInvoices);
+      
+    } catch (error) {
+      console.error('Error loading billing data:', error);
+      // Set default values if database fails
+      setUsage({
+        members: 0,
+        storage: 0,
+        surveys: 0,
+        meetings: 0
+      });
+      setInvoices([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      const { data, error } = await createPaymentSession(planData);
+  // Calculate storage usage based on members (1GB base + 1GB per member)
+  const calculateStorageUsage = (memberCount) => {
+    const baseStorage = 1; // 1GB base
+    const perMemberStorage = memberCount; // 1GB per member
+    return Math.min(baseStorage + perMemberStorage, 5); // Cap at 5GB for basic plan
+  };
+
+  const upgradePlan = async (newPlan) => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      
+      const { error } = await supabase
+        .from('billing_info')
+        .upsert({
+          plan: newPlan,
+          updated_at: new Date().toISOString()
+        });
       
       if (error) {
-        console.error('Error creating payment session:', error);
-        // You could add a toast notification here
-      } else if (data?.checkout_url) {
-        // Redirect to payment page
-        window.location.href = data.checkout_url;
+        console.error('Error upgrading plan:', error);
+        alert('Failed to upgrade plan');
+      } else {
+        setCurrentPlan(newPlan);
+        alert(`Successfully upgraded to ${newPlan} plan!`);
       }
     } catch (error) {
       console.error('Error upgrading plan:', error);
-    } finally {
-      setUpgrading(false);
+      alert('Failed to upgrade plan');
     }
   };
 
-  const loadPlans = async () => {
-    setLoadingPlans(true);
-    try {
-      // For now, we'll use local plans since the API might not be available
-      const localPlans = [
-        {
-          id: 'basic',
-          name: 'Basic',
-          price: 20,
-          seats: 5,
-          features: ['Team Management', 'Basic Analytics', 'Survey System'],
-          description: 'Perfect for small teams getting started'
-        },
-        {
-          id: 'pro',
-          name: 'Pro',
-          price: 50,
-          seats: 20,
-          features: ['Advanced Analytics', 'Custom Surveys', 'Priority Support'],
-          description: 'Ideal for growing teams'
-        },
-        {
-          id: 'enterprise',
-          name: 'Enterprise',
-          price: 100,
-          seats: 100,
-          features: ['Unlimited Seats', 'Custom Integrations', 'Dedicated Support'],
-          description: 'For large organizations'
-        }
-      ];
-      setPlans(localPlans);
-    } catch (error) {
-      console.error('Error loading plans:', error);
-    } finally {
-      setLoadingPlans(false);
-    }
+  const getPlanDetails = (plan) => {
+    const plans = {
+      basic: {
+        name: 'Basic',
+        price: '$29',
+        period: '/mo',
+        members: 10,
+        storage: 5,
+        surveys: 50,
+        meetings: 100,
+        features: [
+          'Up to 10 team members',
+          '5GB storage',
+          'Basic surveys',
+          'Email support'
+        ]
+      },
+      professional: {
+        name: 'Professional',
+        price: '$99',
+        period: '/mo',
+        members: 50,
+        storage: 25,
+        surveys: 200,
+        meetings: 500,
+        features: [
+          'Up to 50 team members',
+          '25GB storage',
+          'Advanced surveys',
+          'Priority support',
+          'Analytics dashboard'
+        ]
+      },
+      enterprise: {
+        name: 'Enterprise',
+        price: '$299',
+        period: '/mo',
+        members: 'Unlimited',
+        storage: 100,
+        surveys: 'Unlimited',
+        meetings: 'Unlimited',
+        features: [
+          'Unlimited team members',
+          '100GB storage',
+          'Unlimited surveys',
+          '24/7 support',
+          'Advanced analytics',
+          'Custom integrations'
+        ]
+      }
+    };
+    return plans[plan] || plans.basic;
   };
 
-  const copyInviteLink = async () => {
-    try {
-      await navigator.clipboard.writeText(billingInfo.inviteLink);
-      // You could add a toast notification here
-    } catch (error) {
-      console.error('Failed to copy invite link:', error);
-    }
+  const getUsagePercentage = (current, limit) => {
+    if (limit === 'Unlimited') return 0;
+    return Math.min((current / limit) * 100, 100);
   };
 
-  const getRoleDisplayName = (role) => {
-    switch (role) {
-      case 'admin': return 'Administrator';
-      case 'manager': return 'Manager';
-      case 'leader': return 'Team Leader';
-      case 'member': return 'Team Member';
-      default: return 'Member';
-    }
+  const getUsageColor = (percentage) => {
+    if (percentage < 50) return 'from-green-400 to-green-600';
+    if (percentage < 80) return 'from-yellow-400 to-yellow-600';
+    return 'from-red-400 to-red-600';
   };
 
-  const getRoleDescription = (role) => {
-    switch (role) {
-      case 'admin': return 'Full access to all features and billing';
-      case 'manager': return 'Can view team analytics and manage members';
-      case 'leader': return 'Can view team performance and insights';
-      case 'member': return 'Can participate in surveys and view own data';
-      default: return 'Basic team member access';
-    }
-  };
-
-  // Access control - only admins can see billing
-  if (!isAdmin) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-        <div className="text-center">
-          <Shield className="w-16 h-16 text-muted mx-auto mb-4" />
-          <p className="text-secondary text-lg">You don't have permission to access billing.</p>
-          <p className="text-muted text-sm mt-2">Only administrators can manage billing and invitations.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-primary">Billing & Invitations</h1>
-          <p className="text-muted mt-2">Manage your subscription and team invitations</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Current Plan Card */}
-          <div className="lg:col-span-2">
-            <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-primary">Current Plan</h2>
-                  <p className="text-muted text-sm">Your active subscription</p>
-                </div>
-                {isMasterAccount && (
-                  <div className="flex items-center gap-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-3 py-1 rounded-full text-sm">
-                    <Crown className="w-4 h-4" />
-                    <span>Master Account</span>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-700 rounded w-32"></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-gray-800 rounded-lg p-6 space-y-4">
+                  <div className="h-6 bg-gray-700 rounded w-24"></div>
+                  <div className="h-4 bg-gray-700 rounded w-32"></div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-700 rounded w-full"></div>
+                    <div className="h-4 bg-gray-700 rounded w-3/4"></div>
                   </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-muted text-sm">Plan</p>
-                    <p className="text-primary font-semibold">
-                      {isMasterAccount ? 'Master' : billingInfo.plan.charAt(0).toUpperCase() + billingInfo.plan.slice(1)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted text-sm">Seats Used</p>
-                    <p className="text-primary font-semibold">
-                      {isMasterAccount ? '∞' : `${billingInfo.usedSeats}/${billingInfo.totalSeats}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-muted text-sm">Monthly Cost</p>
-                    <p className="text-primary font-semibold">
-                      {isMasterAccount ? 'Free' : `€${billingInfo.monthlyCost}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted text-sm">Next Billing</p>
-                    <p className="text-primary font-semibold">
-                      {isMasterAccount ? 'Lifetime' : (billingInfo.nextBillingDate ? new Date(billingInfo.nextBillingDate).toLocaleDateString() : 'N/A')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {!isMasterAccount && (
-                <div className="mt-6 pt-6 border-t border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-muted text-sm">Available Seats</p>
-                      <p className="text-primary font-semibold">
-                        {billingInfo.totalSeats - billingInfo.usedSeats}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setShowUpgradeModal(true)}
-                      disabled={billingInfo.usedSeats >= billingInfo.totalSeats}
-                      className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {billingInfo.usedSeats >= billingInfo.totalSeats ? 'No Seats Available' : 'Upgrade Plan'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="space-y-6">
-            {/* Invite Link */}
-            <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
-              <h3 className="text-lg font-semibold text-primary mb-4">Invite Link</h3>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 p-3 bg-white/5 rounded-lg">
-                  <input
-                    type="text"
-                    value={billingInfo.inviteLink || ''}
-                    readOnly
-                    className="flex-1 bg-transparent text-sm text-primary outline-none"
-                  />
-                  <button
-                    onClick={copyInviteLink}
-                    className="text-muted hover:text-primary transition-colors"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  disabled={!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats}
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats
-                    ? 'No Seats Available'
-                    : 'Invite Team Member'}
-                </button>
-              </div>
-            </div>
-
-            {/* Plan Status */}
-            <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
-              <h3 className="text-lg font-semibold text-primary mb-4">Plan Status</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted text-sm">Status</span>
-                  <span className={`text-sm font-medium ${
-                    isMasterAccount ? 'text-green-400' : 
-                    billingInfo.subscriptionStatus === 'active' ? 'text-green-400' :
-                    billingInfo.subscriptionStatus === 'trial' ? 'text-yellow-400' :
-                    'text-red-400'
-                  }`}>
-                    {isMasterAccount ? 'Active' : billingInfo.subscriptionStatus?.charAt(0).toUpperCase() + billingInfo.subscriptionStatus?.slice(1)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted text-sm">Seats Used</span>
-                  <span className="text-primary text-sm font-medium">
-                    {isMasterAccount ? '∞' : `${billingInfo.usedSeats} of ${billingInfo.totalSeats} seats used`}
-                  </span>
-                </div>
-                {!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats && (
-                  <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-                    <p className="text-red-400 text-sm">You've reached your seat limit. Upgrade to add more team members.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Available Plans */}
-        {!isMasterAccount && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-semibold text-primary">Available Plans</h2>
-                <p className="text-muted text-sm">Choose the plan that fits your team</p>
-              </div>
-              <button
-                onClick={() => setShowPlansModal(true)}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
-              >
-                View All Plans
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-primary mb-4">Invite Team Member</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-muted mb-2">Email</label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-primary placeholder-muted focus:outline-none focus:border-blue-500"
-                  placeholder="team@company.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted mb-2">Role</label>
-                <select
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-primary focus:outline-none focus:border-blue-500"
-                >
-                  <option value="member">Team Member</option>
-                  <option value="leader">Team Leader</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Administrator</option>
-                </select>
-                <p className="text-xs text-muted mt-1">{getRoleDescription(inviteRole)}</p>
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setShowInviteModal(false)}
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-primary px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleInviteUser}
-                  disabled={sendingInvite || !inviteEmail.trim() || (!isMasterAccount && billingInfo.usedSeats >= billingInfo.totalSeats)}
-                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {sendingInvite ? 'Sending...' : 'Send Invite'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Upgrade Modal */}
-      {showUpgradeModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-primary mb-4">Upgrade Plan</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-muted mb-2">Additional Seats</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={additionalSeats}
-                  onChange={(e) => setAdditionalSeats(parseInt(e.target.value) || 1)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-primary focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="bg-white/5 rounded-lg p-3">
-                <p className="text-sm text-muted">New Monthly Cost</p>
-                <p className="text-lg font-semibold text-primary">
-                  €{(billingInfo.monthlyCost + (additionalSeats * 9.99)).toFixed(2)}/month
-                </p>
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-primary px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpgradePlan}
-                  disabled={upgrading}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {upgrading ? 'Processing...' : 'Upgrade Now'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Plans Modal */}
-      {showPlansModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20 p-6 w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-primary">Choose Your Plan</h3>
-              <button
-                onClick={() => setShowPlansModal(false)}
-                className="text-muted hover:text-primary transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {plans.map((plan) => (
-                <div
-                  key={plan.id}
-                  className={`bg-white/5 border rounded-xl p-6 cursor-pointer transition-all duration-200 ${
-                    selectedPlan?.id === plan.id
-                      ? 'border-blue-500 bg-blue-500/10'
-                      : 'border-white/10 hover:border-white/20'
-                  }`}
-                  onClick={() => setSelectedPlan(plan)}
-                >
-                  <div className="text-center mb-4">
-                    <h4 className="text-lg font-semibold text-primary">{plan.name}</h4>
-                    <p className="text-muted text-sm">{plan.description}</p>
-                  </div>
-                  <div className="text-center mb-6">
-                    <span className="text-3xl font-bold text-primary">€{plan.price}</span>
-                    <span className="text-muted text-sm">/month</span>
-                  </div>
-                  <div className="space-y-2 mb-6">
-                    <p className="text-sm text-muted">Up to {plan.seats} team members</p>
-                    {plan.features.map((feature, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-green-400" />
-                        <span className="text-sm text-primary">{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedPlan(plan);
-                      setShowPlansModal(false);
-                      setShowUpgradeModal(true);
-                    }}
-                    className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
-                  >
-                    Choose {plan.name}
-                  </button>
                 </div>
               ))}
             </div>
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  const currentPlanDetails = getPlanDetails(currentPlan);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Billing</h1>
+            <p className="text-gray-400">Manage your subscription, payment methods, and usage</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Current Plan & Usage */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Current Plan Card */}
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-2">Current Plan</h2>
+                  <p className="text-gray-400">You're currently on the {currentPlanDetails.name} plan</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-white">{currentPlanDetails.price}</div>
+                  <div className="text-gray-400 text-sm">{currentPlanDetails.period}</div>
+                </div>
+              </div>
+
+              {/* Usage Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 text-gray-400 mb-1">
+                    <Users size={14} />
+                    <span className="text-xs">Members</span>
+                  </div>
+                  <p className="text-white font-semibold">{usage.members}/{currentPlanDetails.members}</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 text-gray-400 mb-1">
+                    <HardDrive size={14} />
+                    <span className="text-xs">Storage</span>
+                  </div>
+                  <p className="text-white font-semibold">{usage.storage}GB/{currentPlanDetails.storage}GB</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 text-gray-400 mb-1">
+                    <FileText size={14} />
+                    <span className="text-xs">Surveys</span>
+                  </div>
+                  <p className="text-white font-semibold">{usage.surveys}/{currentPlanDetails.surveys}</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2 text-gray-400 mb-1">
+                    <Calendar size={14} />
+                    <span className="text-xs">Meetings</span>
+                  </div>
+                  <p className="text-white font-semibold">{usage.meetings}/{currentPlanDetails.meetings}</p>
+                </div>
+              </div>
+
+              {/* Usage Progress Bars */}
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-300">Team Members</span>
+                    <span className="text-gray-400">{getUsagePercentage(usage.members, currentPlanDetails.members).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full bg-gradient-to-r ${getUsageColor(getUsagePercentage(usage.members, currentPlanDetails.members))}`}
+                      style={{ width: `${getUsagePercentage(usage.members, currentPlanDetails.members)}%` }}
+                    ></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-300">Storage</span>
+                    <span className="text-gray-400">{getUsagePercentage(usage.storage, currentPlanDetails.storage).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full bg-gradient-to-r ${getUsageColor(getUsagePercentage(usage.storage, currentPlanDetails.storage))}`}
+                      style={{ width: `${getUsagePercentage(usage.storage, currentPlanDetails.storage)}%` }}
+                    ></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-gray-300">Surveys</span>
+                    <span className="text-gray-400">{getUsagePercentage(usage.surveys, currentPlanDetails.surveys).toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full bg-gradient-to-r ${getUsageColor(getUsagePercentage(usage.surveys, currentPlanDetails.surveys))}`}
+                      style={{ width: `${getUsagePercentage(usage.surveys, currentPlanDetails.surveys)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6">
+                <button className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2">
+                  <CreditCard size={16} />
+                  Manage Subscription
+                </button>
+                <button className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2">
+                  <Download size={16} />
+                  Download Invoice
+                </button>
+              </div>
+            </div>
+
+            {/* Recent Invoices */}
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50">
+              <h3 className="text-lg font-semibold text-white mb-4">Recent Invoices</h3>
+              {invoices.length > 0 ? (
+                <div className="space-y-3">
+                  {invoices.slice(0, 5).map((invoice) => (
+                    <div key={invoice.id} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg flex items-center justify-center">
+                          <FileText size={20} className="text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="text-white font-medium">{invoice.description}</p>
+                          <p className="text-gray-400 text-sm">{invoice.date}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-white font-semibold">${invoice.amount}</p>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          invoice.status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          {invoice.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="h-16 w-16 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <FileText size={32} className="text-gray-500" />
+                  </div>
+                  <p className="text-gray-500">No invoices yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Plan Upgrade */}
+          <div className="space-y-6">
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50">
+              <h3 className="text-lg font-semibold text-white mb-4">Upgrade Your Plan</h3>
+              
+              {/* Basic Plan */}
+              <div className={`p-4 rounded-xl border-2 mb-4 transition-all duration-200 ${
+                currentPlan === 'basic' 
+                  ? 'border-blue-500/50 bg-blue-500/10' 
+                  : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
+              }`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="text-white font-semibold">Basic</h4>
+                    <p className="text-gray-400 text-sm">Perfect for small teams</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-white">$29</div>
+                    <div className="text-gray-400 text-sm">/mo</div>
+                  </div>
+                </div>
+                <ul className="space-y-2 mb-4">
+                  {getPlanDetails('basic').features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-2 text-sm text-gray-300">
+                      <CheckCircle size={14} className="text-green-400" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <button 
+                  onClick={() => upgradePlan('basic')}
+                  className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
+                    currentPlan === 'basic'
+                      ? 'bg-blue-600 text-white cursor-default'
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                  }`}
+                  disabled={currentPlan === 'basic'}
+                >
+                  {currentPlan === 'basic' ? 'Current Plan' : 'Select Basic'}
+                </button>
+              </div>
+
+              {/* Professional Plan */}
+              <div className={`p-4 rounded-xl border-2 mb-4 transition-all duration-200 ${
+                currentPlan === 'professional' 
+                  ? 'border-blue-500/50 bg-blue-500/10' 
+                  : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
+              }`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="text-white font-semibold">Professional</h4>
+                    <p className="text-gray-400 text-sm">For growing organizations</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-white">$99</div>
+                    <div className="text-gray-400 text-sm">/mo</div>
+                  </div>
+                </div>
+                <ul className="space-y-2 mb-4">
+                  {getPlanDetails('professional').features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-2 text-sm text-gray-300">
+                      <CheckCircle size={14} className="text-green-400" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <button 
+                  onClick={() => upgradePlan('professional')}
+                  className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
+                    currentPlan === 'professional'
+                      ? 'bg-blue-600 text-white cursor-default'
+                      : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white'
+                  }`}
+                  disabled={currentPlan === 'professional'}
+                >
+                  {currentPlan === 'professional' ? 'Current Plan' : 'Upgrade to Pro'}
+                </button>
+              </div>
+
+              {/* Enterprise Plan */}
+              <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+                currentPlan === 'enterprise' 
+                  ? 'border-blue-500/50 bg-blue-500/10' 
+                  : 'border-gray-600 bg-gray-700/30 hover:border-gray-500'
+              }`}>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="text-white font-semibold">Enterprise</h4>
+                    <p className="text-gray-400 text-sm">For large organizations</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xl font-bold text-white">$299</div>
+                    <div className="text-gray-400 text-sm">/mo</div>
+                  </div>
+                </div>
+                <ul className="space-y-2 mb-4">
+                  {getPlanDetails('enterprise').features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-2 text-sm text-gray-300">
+                      <CheckCircle size={14} className="text-green-400" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <button 
+                  onClick={() => upgradePlan('enterprise')}
+                  className={`w-full py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
+                    currentPlan === 'enterprise'
+                      ? 'bg-blue-600 text-white cursor-default'
+                      : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white'
+                  }`}
+                  disabled={currentPlan === 'enterprise'}
+                >
+                  {currentPlan === 'enterprise' ? 'Current Plan' : 'Upgrade to Enterprise'}
+                </button>
+              </div>
+            </div>
+
+            {/* Support Info */}
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-700/50">
+              <h3 className="text-lg font-semibold text-white mb-4">Need Help?</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-gray-700/30 rounded-lg">
+                  <div className="h-8 w-8 bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-lg flex items-center justify-center">
+                    <Info size={16} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-medium">Billing Support</p>
+                    <p className="text-gray-400 text-xs">Get help with payments</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-gray-700/30 rounded-lg">
+                  <div className="h-8 w-8 bg-gradient-to-r from-green-500/20 to-green-600/20 rounded-lg flex items-center justify-center">
+                    <Shield size={16} className="text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-medium">Security</p>
+                    <p className="text-gray-400 text-xs">Your data is protected</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

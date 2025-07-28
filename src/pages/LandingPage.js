@@ -18,7 +18,7 @@ const LandingPage = () => {
       <nav className="bg-white/5 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <Logo size="md" />
+            <Logo size="xl" />
             <div className="flex items-center space-x-4">
               <Link to="/login" className="text-white/70 hover:text-white transition-colors">
                 Sign In

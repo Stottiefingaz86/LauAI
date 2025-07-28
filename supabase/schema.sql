@@ -4,7 +4,7 @@ ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
 -- Create custom types
 CREATE TYPE user_role AS ENUM ('admin', 'manager', 'member');
 CREATE TYPE survey_status AS ENUM ('draft', 'active', 'completed', 'archived');
-CREATE TYPE question_type AS ENUM ('text', 'rating', 'multiple_choice');
+CREATE TYPE question_type AS ENUM ('text', 'rating', 'multiple_choice', 'yes_no');
 
 -- Users table (extends Supabase auth.users)
 CREATE TABLE public.users (
@@ -153,6 +153,57 @@ CREATE POLICY "Team members can view surveys" ON public.surveys
     )
   );
 
+CREATE POLICY "Users can create surveys" ON public.surveys
+  FOR INSERT WITH CHECK (created_by = auth.uid());
+
+CREATE POLICY "Users can update own surveys" ON public.surveys
+  FOR UPDATE USING (created_by = auth.uid());
+
+CREATE POLICY "Users can delete own surveys" ON public.surveys
+  FOR DELETE USING (created_by = auth.uid());
+
+-- Survey questions access policies
+ALTER TABLE public.survey_questions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view survey questions" ON public.survey_questions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.surveys 
+      WHERE surveys.id = survey_questions.survey_id 
+      AND (surveys.created_by = auth.uid() OR surveys.team_id IS NULL OR
+        EXISTS (
+          SELECT 1 FROM public.team_members 
+          WHERE team_id = surveys.team_id AND user_id = auth.uid()
+        ))
+    )
+  );
+
+CREATE POLICY "Users can create survey questions" ON public.survey_questions
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.surveys 
+      WHERE surveys.id = survey_questions.survey_id 
+      AND surveys.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update survey questions" ON public.survey_questions
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.surveys 
+      WHERE surveys.id = survey_questions.survey_id 
+      AND surveys.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete survey questions" ON public.survey_questions
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.surveys 
+      WHERE surveys.id = survey_questions.survey_id 
+      AND surveys.created_by = auth.uid()
+    )
+  );
+
 -- Users can only see their own responses
 ALTER TABLE public.survey_responses ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own responses" ON public.survey_responses
@@ -209,10 +260,37 @@ CREATE TRIGGER update_surveys_updated_at BEFORE UPDATE ON public.surveys
 -- Function to create user profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+    user_role_val user_role;
+    first_name_val TEXT;
+    last_name_val TEXT;
 BEGIN
-  INSERT INTO public.users (id, email, first_name, last_name)
-  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'first_name', NEW.raw_user_meta_data->>'last_name');
-  RETURN NEW;
+    -- Safely extract values with fallbacks
+    first_name_val := COALESCE(NEW.raw_user_meta_data->>'first_name', '');
+    last_name_val := COALESCE(NEW.raw_user_meta_data->>'last_name', '');
+    
+    -- Extract role with proper error handling
+    IF NEW.raw_user_meta_data IS NOT NULL AND NEW.raw_user_meta_data ? 'role' THEN
+        user_role_val := (NEW.raw_user_meta_data->>'role')::user_role;
+    ELSE
+        user_role_val := 'member';
+    END IF;
+    
+    -- Insert with comprehensive error handling
+    INSERT INTO public.users (id, email, first_name, last_name, role)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        first_name_val,
+        last_name_val,
+        user_role_val
+    );
+    
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    -- Log error but don't fail the signup
+    RAISE NOTICE 'Error creating user profile: %', SQLERRM;
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

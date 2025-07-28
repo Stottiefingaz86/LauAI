@@ -33,7 +33,7 @@ const SignupPage = () => {
     setError('');
     
     try {
-      const { error } = await signUp(formData.email, formData.password, formData.firstName, formData.lastName);
+      const { error } = await signUp(formData.email, formData.password, formData.firstName, formData.lastName, formData.role);
       if (error) {
         setError(error.message);
       } else {
@@ -166,11 +166,10 @@ const SignupPage = () => {
                   required
                 >
                   <option value="">Select your role</option>
+                  <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
-                  <option value="director">Director</option>
-                  <option value="vp">VP</option>
-                  <option value="ceo">CEO</option>
-                  <option value="hr">HR Manager</option>
+                  <option value="leader">Leader</option>
+                  <option value="member">Member</option>
                 </select>
               </div>
             </div>

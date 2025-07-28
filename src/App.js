@@ -14,9 +14,12 @@ import SurveyCompletion from './pages/SurveyCompletion';
 import EntryFlow from './pages/EntryFlow';
 import InvitePage from './pages/InvitePage';
 
-// Protected Route Component
-const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager', 'leader'] }) => {
+// Simple Protected Route Component
+const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
+
+  console.log('ProtectedRoute render - user:', user);
+  console.log('ProtectedRoute render - loading:', loading);
 
   if (loading) {
     return (
@@ -32,90 +35,120 @@ const ProtectedRoute = ({ children, allowedRoles = ['admin', 'member', 'manager'
   }
 
   if (!user) {
+    console.log('ProtectedRoute - no user, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
-  const userRole = user?.user_metadata?.role || 'member';
-  if (!allowedRoles.includes(userRole)) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-white text-2xl">⚠️</span>
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Access Denied</h1>
-          <p className="text-gray-300">You don't have permission to access this page.</p>
-        </div>
-      </div>
-    );
-  }
-
+  console.log('ProtectedRoute - user authenticated, rendering children');
   return children;
 };
 
 // Main App Component
 const AppContent = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
-  // Determine default route based on user role
-  const getDefaultRoute = () => {
-    if (!user) return '/';
-    const userRole = user?.user_metadata?.role || 'member';
-    if (userRole === 'member') {
-      return '/app/surveys'; // Members only see surveys
-    }
-    return '/app/dashboard'; // Admins, managers, leaders see dashboard
-  };
+  console.log('AppContent render - user:', user);
+  console.log('AppContent render - loading:', loading);
 
   return (
     <Router>
       <Routes>
         {/* Public Routes */}
-        <Route path="/" element={user ? <Navigate to={getDefaultRoute()} replace /> : <LandingPage />} />
-        <Route path="/login" element={<Login />} /> {/* Remove the redirect logic - let Login component handle it */}
+        <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
+        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
         
         {/* Invitation Route (Public) */}
         <Route path="/invite/:inviteId" element={<InvitePage />} />
         
-        {/* Protected App Routes */}
-        <Route path="/app" element={
+        {/* Public Survey Completion Route */}
+        <Route path="/survey/:surveyId/member/:memberId" element={<SurveyCompletion />} />
+        
+        {/* Protected Routes - Simple structure */}
+        <Route path="/dashboard" element={
           <ProtectedRoute>
             <AppShell>
-              <Routes>
-                <Route path="dashboard" element={
-                  <ProtectedRoute allowedRoles={['admin', 'manager', 'leader', 'member']}>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } />
-                <Route path="teams" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <Teams />
-                  </ProtectedRoute>
-                } />
-                <Route path="surveys" element={<Surveys />} />
-                <Route path="billing" element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <Billing />
-                  </ProtectedRoute>
-                } />
-                <Route path="member/:memberId" element={<TeamMember />} />
-                <Route path="survey/:surveyId" element={<SurveyPage />} />
-                <Route path="survey/:surveyId/completion" element={<SurveyCompletion />} />
-                <Route path="entry-flow" element={<EntryFlow />} />
-                <Route path="*" element={<Navigate to="dashboard" replace />} />
-              </Routes>
+              <Dashboard />
             </AppShell>
           </ProtectedRoute>
         } />
         
-        {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/teams" element={
+          <ProtectedRoute>
+            <AppShell>
+              <Teams />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/surveys" element={
+          <ProtectedRoute>
+            <AppShell>
+              <Surveys />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/billing" element={
+          <ProtectedRoute>
+            <AppShell>
+              <Billing />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/team/:memberId" element={
+          <ProtectedRoute>
+            <AppShell>
+              <TeamMember />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/member/:memberId" element={
+          <ProtectedRoute>
+            <AppShell>
+              <TeamMember />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/survey/:surveyId" element={
+          <ProtectedRoute>
+            <AppShell>
+              <SurveyPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/survey/:surveyId/completion" element={
+          <ProtectedRoute>
+            <AppShell>
+              <SurveyCompletion />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/survey/:surveyId/member/:memberId" element={
+          <ProtectedRoute>
+            <SurveyCompletion />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/entry" element={
+          <ProtectedRoute>
+            <AppShell>
+              <EntryFlow />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        
+        {/* Catch all - redirect to dashboard */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>
   );
 };
 
-// Root App Component with Auth Provider
 const App = () => {
   return (
     <AuthProvider>

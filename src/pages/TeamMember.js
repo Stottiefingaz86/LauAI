@@ -1,40 +1,95 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { memberService, teamService, surveyService } from '../lib/supabaseService';
+import { emailService } from '../lib/emailService';
 import { 
   ArrowLeft, 
-  TrendingUp, 
-  TrendingDown, 
+  Mail, 
+  Upload, 
   Activity, 
-  Calendar, 
-  Users, 
-  Target, 
+  FileText, 
+  X,
+  Send,
+  Play,
+  BarChart3,
+  Target,
   Award,
   AlertCircle,
-  Play,
-  FileText,
-  BarChart3,
-  Eye,
-  Download,
-  Clock,
   CheckCircle,
-  X,
-  ChevronDown,
-  ChevronUp
+  Plus,
+  Eye,
+  Calendar,
+  TrendingUp,
+  MessageSquare,
+  Star,
+  Zap,
+  Shield,
+  Crown,
+  Building2,
+  UserPlus,
+  MoreVertical,
+  Edit,
+  Trash2,
+  Heart,
+  Frown,
+  Smile,
+  ThumbsUp,
+  ThumbsDown,
+  TrendingDown,
+  UserCheck,
+  UserX,
+  Briefcase,
+  GraduationCap,
+  Users2,
+  ActivitySquare,
+  PieChart,
+  LineChart,
+  BarChart,
+  Clock3,
+  CalendarDays,
+  MessageCircle,
+  Video,
+  Mic,
+  Headphones,
+  Settings,
+  Zap as Lightning,
+  Target as Bullseye,
+  Award as Trophy,
+  Star as StarIcon,
+  Heart as HeartIcon,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Info,
+  Lightbulb,
+  Brain,
+  Sparkles
 } from 'lucide-react';
-import { memberService, meetingService, surveyService, insightService } from '../lib/supabaseService';
-import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const TeamMember = () => {
   const { memberId } = useParams();
   const { user } = useAuth();
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedInsight, setSelectedInsight] = useState(null);
-  const [showVideoModal, setShowVideoModal] = useState(false);
-  const [selectedMeeting, setSelectedMeeting] = useState(null);
-  const [showSurveyResponses, setShowSurveyResponses] = useState(false);
-  const [selectedSurvey, setSelectedSurvey] = useState(null);
-  const [expandedTimeline, setExpandedTimeline] = useState({});
+  const [error, setError] = useState(null);
+  const [showSurveyModal, setShowSurveyModal] = useState(false);
+  const [activeSurveys, setActiveSurveys] = useState([]);
+  const [loadingSurveys, setLoadingSurveys] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState('member');
+  const [teams, setTeams] = useState([]);
+  
+  // Simplified insights state
+  const [memberInsights, setMemberInsights] = useState({
+    surveys: { sent: 0, completed: 0, responseRate: 0 },
+    meetings: { total: 0, lastMeeting: null, averageDuration: 0 },
+    emotions: { happy: 0, neutral: 0, unhappy: 0, angry: 0 },
+    relationships: { positive: [], negative: [], neutral: [] },
+    performance: { score: 0, trend: 'stable', recommendations: [] },
+    career: { readiness: 0, potential: 0, suggestions: [] },
+    signals: { current: 0, history: [], trend: 'stable' }
+  });
 
   useEffect(() => {
     if (memberId) {
@@ -45,74 +100,247 @@ const TeamMember = () => {
   const loadMemberData = async () => {
     try {
       setLoading(true);
-      const { data, error } = await memberService.getMemberById(memberId);
+      setError(null);
+      console.log('Loading member data for ID:', memberId);
+      
+      // Use a simple query first to avoid join issues
+      const { data, error } = await supabase
+        .from('members')
+        .select('*')
+        .eq('id', memberId)
+        .single();
+      
+      console.log('Member query response:', { data, error });
+      
       if (error) {
         console.error('Error loading member:', error);
-      } else {
-        setMember(data);
+        setError('Failed to load member data');
+        return;
       }
+      
+      if (!data) {
+        setError('Member not found');
+        return;
+      }
+      
+      setMember(data);
+      
+      // Load insights separately to avoid blocking the main data
+      loadInsights();
+      
     } catch (error) {
       console.error('Error loading member data:', error);
+      setError('Failed to load member data');
     } finally {
       setLoading(false);
     }
   };
 
+  const loadInsights = async () => {
+    try {
+      // Load basic survey data
+      const { data: surveyInvitations } = await supabase
+        .from('survey_invitations')
+        .select('*')
+        .eq('member_id', memberId);
+
+      const { data: surveyCompletions } = await supabase
+        .from('survey_completions')
+        .select('*')
+        .eq('member_id', memberId);
+
+      const { data: signals } = await supabase
+        .from('signals')
+        .select('*')
+        .eq('member_id', memberId);
+
+      // Calculate basic insights
+      const sent = (surveyInvitations?.length || 0) + (signals?.filter(s => s.signal_type === 'survey_sent')?.length || 0);
+      const completed = surveyCompletions?.length || 0;
+      const responseRate = sent > 0 ? Math.round((completed / sent) * 100) : 0;
+
+      setMemberInsights(prev => ({
+        ...prev,
+        surveys: { sent, completed, responseRate }
+      }));
+
+    } catch (error) {
+      console.error('Error loading insights:', error);
+      // Continue with default insights
+    }
+  };
+
+  const loadActiveSurveys = async () => {
+    try {
+      setLoadingSurveys(true);
+      console.log('Loading active surveys...');
+      
+      const { data, error } = await surveyService.getSurveys();
+      
+      console.log('Surveys response:', { data, error });
+      
+      if (error) {
+        console.error('Error loading surveys:', error);
+        return;
+      }
+      
+      // Filter for active surveys
+      const active = data?.filter(survey => survey.status === 'active') || [];
+      console.log('Active surveys:', active);
+      
+      setActiveSurveys(active);
+    } catch (error) {
+      console.error('Error loading active surveys:', error);
+    } finally {
+      setLoadingSurveys(false);
+    }
+  };
+
+  const handleSendSurvey = async (surveyId, targetType, targetId) => {
+    try {
+      console.log('Starting handleSendSurvey with:', { surveyId, targetType, targetId });
+      
+      if (!surveyId) {
+        alert('Please select a survey to send');
+        return;
+      }
+
+      // Get survey details
+      const { data: survey, error: surveyError } = await surveyService.getSurveyById(surveyId);
+      
+      if (surveyError || !survey) {
+        console.error('Error fetching survey:', surveyError);
+        alert('Survey not found or error loading survey');
+        return;
+      }
+
+      console.log('Sending survey', surveyId, 'to member:', member.name, 'URL:', `${window.location.origin}/survey/${surveyId}/member/${memberId}`);
+      console.log('Survey found:', survey);
+
+      // Send the survey email
+      const result = await memberService.sendSurveyEmail(surveyId, [memberId]);
+      
+      console.log('Survey send result:', result);
+      
+      if (result.error) {
+        console.error('Error sending survey:', result.error);
+        alert(`Failed to send survey: ${result.error.message}`);
+        return;
+      }
+
+      console.log('Survey sent successfully:', result.data);
+      alert(`Survey sent successfully to ${result.data.members_sent} member(s)`);
+      
+      // Reload insights to update counts
+      loadInsights();
+      
+    } catch (error) {
+      console.error('Error in handleSendSurvey:', error);
+      alert('Failed to send survey. Please try again.');
+    }
+  };
+
+  const getFilteredSurveys = () => {
+    if (!activeSurveys.length) return [];
+    
+    return activeSurveys.filter(survey => {
+      if (selectedTarget === 'member') {
+        return true; // Show all surveys for member target
+      }
+      return survey.team_id === member?.team_id;
+    });
+  };
+
   const getSignalGradient = (value) => {
-    if (typeof value !== 'number') return 'from-gray-400 to-gray-500';
-    if (value >= 8) return 'from-green-400 to-green-600';
-    if (value >= 6) return 'from-yellow-400 to-yellow-600';
-    return 'from-red-400 to-red-600';
+    if (value >= 8) return 'from-green-500 to-emerald-500';
+    if (value >= 6) return 'from-blue-500 to-cyan-500';
+    if (value >= 4) return 'from-yellow-500 to-orange-500';
+    return 'from-red-500 to-pink-500';
   };
 
-  const getSignalGlow = (value) => {
-    if (typeof value !== 'number') return 'shadow-gray-400/50';
-    if (value >= 8) return 'shadow-green-400/50';
-    if (value >= 6) return 'shadow-yellow-400/50';
-    return 'shadow-red-400/50';
+  const getEmotionIcon = (emotion) => {
+    switch (emotion) {
+      case 'happy': return <Smile className="h-4 w-4 text-green-400" />;
+      case 'neutral': return <MessageSquare className="h-4 w-4 text-gray-400" />;
+      case 'unhappy': return <Frown className="h-4 w-4 text-yellow-400" />;
+      case 'angry': return <AlertTriangle className="h-4 w-4 text-red-400" />;
+      default: return <MessageSquare className="h-4 w-4 text-gray-400" />;
+    }
   };
 
-  const isNewMember = member && (!member.signals || member.signals === 'New');
-
-  const toggleTimelineItem = (itemId) => {
-    setExpandedTimeline(prev => ({
-      ...prev,
-      [itemId]: !prev[itemId]
-    }));
+  const getTrendIcon = (trend) => {
+    switch (trend) {
+      case 'up': return <TrendingUp className="h-4 w-4 text-green-400" />;
+      case 'down': return <TrendingDown className="h-4 w-4 text-red-400" />;
+      default: return <Activity className="h-4 w-4 text-blue-400" />;
+    }
   };
 
-  const playVideo = (meeting) => {
-    setSelectedMeeting(meeting);
-    setShowVideoModal(true);
+  const getPerformanceColor = (score) => {
+    if (score >= 80) return 'text-green-400';
+    if (score >= 60) return 'text-yellow-400';
+    return 'text-red-400';
   };
 
-  const viewSurveyResponses = (survey) => {
-    setSelectedSurvey(survey);
-    setShowSurveyResponses(true);
-  };
-
-  if (loading) {
+  // Error state
+  if (error) {
     return (
-      <div className="p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
-            ))}
+      <div className="min-h-screen bg-gray-900 text-white p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-red-900/20 border border-red-500/20 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertCircle className="h-6 w-6 text-red-400" />
+              <h2 className="text-xl font-semibold text-red-400">Error Loading Member</h2>
+            </div>
+            <p className="text-red-300 mb-4">{error}</p>
+            <Link 
+              to="/teams" 
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Teams
+            </Link>
           </div>
         </div>
       </div>
     );
   }
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading member data...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No member data
   if (!member) {
     return (
-      <div className="p-6">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-primary mb-2">Member Not Found</h2>
-          <p className="text-secondary">The requested team member could not be found.</p>
+      <div className="min-h-screen bg-gray-900 text-white p-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-yellow-900/20 border border-yellow-500/20 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertCircle className="h-6 w-6 text-yellow-400" />
+              <h2 className="text-xl font-semibold text-yellow-400">Member Not Found</h2>
+            </div>
+            <p className="text-yellow-300 mb-4">The requested member could not be found.</p>
+            <Link 
+              to="/teams" 
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Teams
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -122,439 +350,215 @@ const TeamMember = () => {
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <button 
-          onClick={() => window.history.back()}
-          className="btn-secondary p-2"
+        <Link 
+          to="/teams"
+          className="glass-button p-2 hover:bg-white/10"
         >
-          <ArrowLeft size={16} />
-        </button>
-        <div>
-          <h1 className="text-2xl font-bold text-primary">{member.name}</h1>
-          <p className="text-secondary">{member.role} • {member.department}</p>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-secondary text-sm">Current Signal</p>
-              <p className="text-2xl font-bold text-primary">
-                {isNewMember ? 'New' : member.signals || 'N/A'}
-              </p>
-            </div>
-            <div className={`w-12 h-12 rounded-full bg-gradient-to-r ${getSignalGradient(member.signals)} ${getSignalGlow(member.signals)} flex items-center justify-center`}>
-              <Activity size={20} className="text-white" />
-            </div>
+          <ArrowLeft size={16} className="text-white" />
+        </Link>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-white">{member.name}</h1>
+          <div className="flex items-center gap-4 text-white/70">
+            <span>{member.role} • {member.department}</span>
+            <span>•</span>
+            <span className="text-white/80">{member.email}</span>
           </div>
         </div>
-
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-secondary text-sm">Meetings</p>
-              <p className="text-2xl font-bold text-primary">{member.meetings?.length || 0}</p>
-            </div>
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Calendar size={20} className="text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-secondary text-sm">Surveys</p>
-              <p className="text-2xl font-bold text-primary">{member.surveys?.length || 0}</p>
-            </div>
-            <div className="p-2 bg-green-100 rounded-lg">
-              <BarChart3 size={20} className="text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-secondary text-sm">Insights</p>
-              <p className="text-2xl font-bold text-primary">{member.insights?.length || 0}</p>
-            </div>
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Target size={20} className="text-purple-600" />
-            </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              // TODO: Implement edit member functionality
+              alert('Edit member functionality coming soon!');
+            }}
+            className="glass-button p-2 hover:bg-white/10"
+            title="Edit member"
+          >
+            <Edit size={16} className="text-white" />
+          </button>
+          <div className={`px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r ${getSignalGradient(memberInsights.signals.current)}`}>
+            Signal: {memberInsights.signals.current}/10
           </div>
         </div>
       </div>
 
-      {/* AI Insights & Recommendations */}
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div 
+          onClick={() => {
+            setShowSurveyModal(true);
+            loadActiveSurveys();
+          }}
+          className="glass-card p-4 hover:bg-white/10 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-blue-400/20 to-blue-500/20 rounded-lg flex items-center justify-center">
+              <Mail size={20} className="text-blue-400" />
+            </div>
+            <div>
+              <p className="text-white font-medium">Send Survey</p>
+              <p className="text-white/60 text-sm">Send feedback survey</p>
+            </div>
+          </div>
+        </div>
+
+        <Link 
+          to="/entry"
+          className="glass-card p-4 hover:bg-white/10 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-purple-400/20 to-purple-500/20 rounded-lg flex items-center justify-center">
+              <Upload size={20} className="text-purple-400" />
+            </div>
+            <div>
+              <p className="text-white font-medium">Upload 1:1</p>
+              <p className="text-white/60 text-sm">Upload meeting recording</p>
+            </div>
+          </div>
+        </Link>
+
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-green-400/20 to-emerald-500/20 rounded-lg flex items-center justify-center">
+              <Activity size={20} className="text-green-400" />
+            </div>
+            <div>
+              <p className="text-white font-medium">Current Signal</p>
+              <p className="text-white/60 text-sm">{memberInsights.signals.current}/10</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Comprehensive Analytics Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
-            <Target size={20} />
-            AI Insights
-          </h3>
-          <div className="space-y-3">
-            {member.insights?.map((insight, index) => (
-              <div 
-                key={index} 
-                className="p-3 bg-mint-bg rounded-lg cursor-pointer hover:bg-mint-accent transition-colors"
-                onClick={() => setSelectedInsight(insight)}
-              >
-                <p className="text-sm text-primary font-medium">{insight.title}</p>
-                <p className="text-xs text-secondary mt-1">{insight.description}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs text-muted">Source: {insight.source}</span>
-                  <span className="text-xs text-muted">•</span>
-                  <span className="text-xs text-muted">{new Date(insight.created_at).toLocaleDateString()}</span>
-                </div>
-              </div>
-            )) || (
-              <p className="text-muted text-sm">No AI insights available yet.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
-            <Award size={20} />
-            Recommendations
-          </h3>
-          <div className="space-y-3">
-            {member.recommendations?.map((rec, index) => (
-              <div key={index} className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-primary font-medium">{rec.title}</p>
-                <p className="text-xs text-secondary mt-1">{rec.description}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs text-muted">Priority: {rec.priority}</span>
-                  <span className="text-xs text-muted">•</span>
-                  <span className="text-xs text-muted">{rec.category}</span>
-                </div>
-              </div>
-            )) || (
-              <p className="text-muted text-sm">No recommendations available yet.</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Timeline with Raw Data */}
-      <div className="glass-card p-6">
-        <h3 className="text-lg font-semibold text-primary mb-4 flex items-center gap-2">
-          <Activity size={20} />
-          Timeline & Raw Data
-        </h3>
         
-        <div className="space-y-4">
-          {/* Meetings Timeline */}
-          {member.meetings?.map((meeting, index) => (
-            <div key={meeting.id} className="border-l-2 border-mint-accent pl-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 bg-mint-accent rounded-full"></div>
-                  <div>
-                    <h4 className="text-primary font-medium">{meeting.title}</h4>
-                    <p className="text-sm text-secondary">{new Date(meeting.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {meeting.recording_url && (
-                    <button
-                      onClick={() => playVideo(meeting)}
-                      className="btn-secondary p-2"
-                      title="Play Video"
-                    >
-                      <Play size={16} />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => toggleTimelineItem(`meeting-${meeting.id}`)}
-                    className="btn-secondary p-2"
-                  >
-                    {expandedTimeline[`meeting-${meeting.id}`] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-                </div>
-              </div>
-              
-              {expandedTimeline[`meeting-${meeting.id}`] && (
-                <div className="mt-4 space-y-3">
-                  {/* Raw Meeting Data */}
-                  <div className="glass-card p-4">
-                    <h5 className="font-medium text-primary mb-2">Raw Meeting Data</h5>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-secondary">Duration:</span>
-                        <span className="ml-2 text-primary">{meeting.duration || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-secondary">File Size:</span>
-                        <span className="ml-2 text-primary">{meeting.file_size || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-secondary">Upload Date:</span>
-                        <span className="ml-2 text-primary">{new Date(meeting.created_at).toLocaleString()}</span>
-                      </div>
-                      <div>
-                        <span className="text-secondary">Analysis Status:</span>
-                        <span className="ml-2 text-primary">{meeting.analyzed_at ? 'Completed' : 'Pending'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* AI Analysis Results */}
-                  {meeting.analysis_data && (
-                    <div className="glass-card p-4">
-                      <h5 className="font-medium text-primary mb-2">AI Analysis Results</h5>
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-secondary">Sentiment:</span>
-                          <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                            meeting.analysis_data.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
-                            meeting.analysis_data.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {meeting.analysis_data.sentiment}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-secondary">Engagement Score:</span>
-                          <span className="ml-2 text-primary">{meeting.analysis_data.engagement_score}/10</span>
-                        </div>
-                        <div>
-                          <span className="text-secondary">Communication Score:</span>
-                          <span className="ml-2 text-primary">{meeting.analysis_data.communication_score}/10</span>
-                        </div>
-                        {meeting.analysis_data.action_items && (
-                          <div>
-                            <span className="text-secondary">Action Items:</span>
-                            <ul className="ml-2 mt-1">
-                              {meeting.analysis_data.action_items.map((item, idx) => (
-                                <li key={idx} className="text-sm text-primary">• {item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+        {/* Survey Analytics */}
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <BarChart3 size={20} className="text-blue-400" />
+            Survey Analytics
+          </h3>
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{memberInsights.surveys.sent}</p>
+              <p className="text-white/60 text-sm">Sent</p>
             </div>
-          ))}
-
-          {/* Surveys Timeline */}
-          {member.surveys?.map((survey, index) => (
-            <div key={survey.id} className="border-l-2 border-green-400 pl-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 bg-green-400 rounded-full"></div>
-                  <div>
-                    <h4 className="text-primary font-medium">{survey.title}</h4>
-                    <p className="text-sm text-secondary">{new Date(survey.completed_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => viewSurveyResponses(survey)}
-                    className="btn-secondary p-2"
-                    title="View Responses"
-                  >
-                    <FileText size={16} />
-                  </button>
-                  <button
-                    onClick={() => toggleTimelineItem(`survey-${survey.id}`)}
-                    className="btn-secondary p-2"
-                  >
-                    {expandedTimeline[`survey-${survey.id}`] ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-                </div>
-              </div>
-              
-              {expandedTimeline[`survey-${survey.id}`] && (
-                <div className="mt-4 space-y-3">
-                  {/* Raw Survey Data */}
-                  <div className="glass-card p-4">
-                    <h5 className="font-medium text-primary mb-2">Raw Survey Data</h5>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-secondary">Questions:</span>
-                        <span className="ml-2 text-primary">{survey.questions_count || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-secondary">Completion Time:</span>
-                        <span className="ml-2 text-primary">{survey.completion_time || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-secondary">Satisfaction Score:</span>
-                        <span className="ml-2 text-primary">{survey.satisfaction_score || 'N/A'}/10</span>
-                      </div>
-                      <div>
-                        <span className="text-secondary">Response Count:</span>
-                        <span className="ml-2 text-primary">{survey.response_count || 'N/A'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Survey Responses */}
-                  {survey.responses && (
-                    <div className="glass-card p-4">
-                      <h5 className="font-medium text-primary mb-2">Survey Responses</h5>
-                      <div className="space-y-2">
-                        {survey.responses.map((response, idx) => (
-                          <div key={idx} className="p-2 bg-gray-50 rounded">
-                            <p className="text-sm font-medium text-primary">{response.question}</p>
-                            <p className="text-sm text-secondary mt-1">{response.answer}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{memberInsights.surveys.completed}</p>
+              <p className="text-white/60 text-sm">Completed</p>
             </div>
-          ))}
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{memberInsights.surveys.responseRate}%</p>
+              <p className="text-white/60 text-sm">Response Rate</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-white/70 text-sm">Response Rate</span>
+              <div className="w-24 bg-gray-700 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all"
+                  style={{ width: `${memberInsights.surveys.responseRate}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Performance Metrics */}
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Target size={20} className="text-green-400" />
+            Performance Metrics
+          </h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-white/70">Performance Score</span>
+              <span className={`font-semibold ${getPerformanceColor(memberInsights.performance.score)}`}>
+                {memberInsights.performance.score}/100
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-white/70">Career Readiness</span>
+              <span className="text-white font-semibold">{memberInsights.career.readiness}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-white/70">Growth Potential</span>
+              <span className="text-white font-semibold">{memberInsights.career.potential}%</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Video Modal */}
-      {showVideoModal && selectedMeeting && (
+      {/* Signal History Chart */}
+      <div className="glass-card p-6 mb-6">
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <LineChart size={20} className="text-green-400" />
+          Signal History (Last 12 Months)
+        </h3>
+        <div className="flex items-end justify-between h-32">
+          {memberInsights.signals.history.map((point, index) => (
+            <div key={index} className="flex flex-col items-center">
+              <div 
+                className="w-4 bg-gradient-to-t from-green-400 to-green-600 rounded-t"
+                style={{ height: `${(point.value / 100) * 120}px` }}
+              ></div>
+              <span className="text-white/60 text-xs mt-2">{point.month}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-white/70 text-sm">Signal Trend: {memberInsights.signals.trend}</span>
+          {getTrendIcon(memberInsights.signals.trend)}
+        </div>
+      </div>
+
+      {/* Survey Modal */}
+      {showSurveyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="glass-modal w-full max-w-4xl p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-primary">Meeting Recording</h3>
+          <div className="glass-card max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Send Survey</h3>
               <button
-                onClick={() => setShowVideoModal(false)}
-                className="text-muted hover:text-primary"
+                onClick={() => setShowSurveyModal(false)}
+                className="glass-button p-1 hover:bg-white/10"
               >
-                <X size={20} />
+                <X size={16} className="text-white" />
               </button>
             </div>
             
             <div className="space-y-4">
-              <div className="bg-black rounded-lg overflow-hidden">
-                <video
-                  controls
-                  className="w-full h-96 object-cover"
-                  src={selectedMeeting.recording_url}
+              <div>
+                <label className="block text-white/70 text-sm mb-2">Survey</label>
+                <select 
+                  className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleSendSurvey(e.target.value, selectedTarget, memberId);
+                      setShowSurveyModal(false);
+                    }
+                  }}
                 >
-                  Your browser does not support the video tag.
-                </video>
+                  <option value="">Select a survey...</option>
+                  {getFilteredSurveys().map(survey => (
+                    <option key={survey.id} value={survey.id}>
+                      {survey.title}
+                    </option>
+                  ))}
+                </select>
               </div>
               
-              <div className="glass-card p-4">
-                <h4 className="font-medium text-primary mb-2">{selectedMeeting.title}</h4>
-                <p className="text-sm text-secondary mb-3">{selectedMeeting.description}</p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-secondary">Duration:</span>
-                    <span className="ml-2 text-primary">{selectedMeeting.duration || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-secondary">Upload Date:</span>
-                    <span className="ml-2 text-primary">{new Date(selectedMeeting.created_at).toLocaleString()}</span>
-                  </div>
+              {loadingSurveys && (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
+                  <p className="text-white/60 text-sm mt-2">Loading surveys...</p>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Survey Responses Modal */}
-      {showSurveyResponses && selectedSurvey && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="glass-modal w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-primary">Survey Responses</h3>
-              <button
-                onClick={() => setShowSurveyResponses(false)}
-                className="text-muted hover:text-primary"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="glass-card p-4">
-                <h4 className="font-medium text-primary mb-2">{selectedSurvey.title}</h4>
-                <p className="text-sm text-secondary mb-3">{selectedSurvey.description}</p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-secondary">Completion Date:</span>
-                    <span className="ml-2 text-primary">{new Date(selectedSurvey.completed_at).toLocaleDateString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-secondary">Satisfaction Score:</span>
-                    <span className="ml-2 text-primary">{selectedSurvey.satisfaction_score || 'N/A'}/10</span>
-                  </div>
-                </div>
-              </div>
+              )}
               
-              <div className="space-y-3">
-                {selectedSurvey.responses?.map((response, index) => (
-                  <div key={index} className="glass-card p-4">
-                    <h5 className="font-medium text-primary mb-2">Question {index + 1}</h5>
-                    <p className="text-sm text-secondary mb-2">{response.question}</p>
-                    <div className="p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-primary">{response.answer}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Insight Detail Modal */}
-      {selectedInsight && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="glass-modal w-full max-w-2xl p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-primary">AI Insight Details</h3>
-              <button
-                onClick={() => setSelectedInsight(null)}
-                className="text-muted hover:text-primary"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="glass-card p-4">
-                <h4 className="font-medium text-primary mb-2">{selectedInsight.title}</h4>
-                <p className="text-sm text-secondary mb-3">{selectedInsight.description}</p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-secondary">Source:</span>
-                    <span className="ml-2 text-primary">{selectedInsight.source}</span>
-                  </div>
-                  <div>
-                    <span className="text-secondary">Severity:</span>
-                    <span className="ml-2 text-primary">{selectedInsight.severity}</span>
-                  </div>
-                  <div>
-                    <span className="text-secondary">Generated:</span>
-                    <span className="ml-2 text-primary">{new Date(selectedInsight.created_at).toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="text-secondary">Type:</span>
-                    <span className="ml-2 text-primary">{selectedInsight.insight_type}</span>
-                  </div>
-                </div>
-              </div>
-              
-              {selectedInsight.action_items && (
-                <div className="glass-card p-4">
-                  <h5 className="font-medium text-primary mb-2">Action Items</h5>
-                  <ul className="space-y-2">
-                    {selectedInsight.action_items.map((item, index) => (
-                      <li key={index} className="text-sm text-primary flex items-start gap-2">
-                        <span className="text-mint-dark mt-1">•</span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+              {!loadingSurveys && getFilteredSurveys().length === 0 && (
+                <div className="text-center py-4">
+                  <p className="text-white/60 text-sm">No active surveys available</p>
+                  <p className="text-white/40 text-xs mt-1">Create a survey first in the Surveys page</p>
                 </div>
               )}
             </div>

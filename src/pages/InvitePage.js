@@ -35,18 +35,43 @@ const InvitePage = () => {
 
   const loadInviteData = async () => {
     try {
-      // This would typically fetch invite data from your backend
-      // For now, we'll simulate the invite data
-      const mockInviteData = {
-        id: inviteId,
-        email: 'invited@company.com',
-        role: 'member',
-        invitedBy: 'admin@company.com',
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-        status: 'pending'
+      // Import supabase client
+      const { supabase } = await import('../lib/supabase');
+      
+      // Load real invite data from database
+      const { data: invite, error } = await supabase
+        .from('invitations')
+        .select('*')
+        .eq('id', inviteId)
+        .single();
+      
+      if (error || !invite) {
+        throw new Error('Invalid or expired invitation');
+      }
+      
+      // Check if invitation is expired
+      const expiresAt = new Date(invite.created_at);
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from creation
+      
+      if (new Date() > expiresAt) {
+        throw new Error('Invitation has expired');
+      }
+      
+      // Check if invitation is already used
+      if (invite.status === 'accepted') {
+        throw new Error('Invitation has already been used');
+      }
+      
+      const realInviteData = {
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        invitedBy: invite.created_at, // We'll use creation date as reference
+        expiresAt: expiresAt,
+        status: invite.status
       };
 
-      setInviteData(mockInviteData);
+      setInviteData(realInviteData);
     } catch (error) {
       console.error('Error loading invite data:', error);
       setError('Invalid or expired invitation link');
@@ -90,6 +115,13 @@ const InvitePage = () => {
       if (error) {
         setError(error.message);
       } else {
+        // Update invitation status in database
+        const { supabase } = await import('../lib/supabase');
+        await supabase
+          .from('invitations')
+          .update({ status: 'accepted' })
+          .eq('id', inviteId);
+        
         // Redirect to the app
         navigate('/app/dashboard');
       }
